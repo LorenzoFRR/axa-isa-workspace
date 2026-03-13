@@ -8,6 +8,11 @@ Atualizar conforme novos pontos surgirem nas sessões de trabalho.
 Ícone em andamento: 🔵
 Ícone documento específico: 📄
 
+OBS: Atualizar repo:
+git add .
+git commit -m "descrição curta"
+git push
+
 ####################################################################
 
 # Integrações / Otimização desenvolvimento
@@ -47,6 +52,9 @@ Atualizar conforme novos pontos surgirem nas sessões de trabalho.
 # 1_PRE_PROC
   - [STDBY] Implementar lógica: se não foi atualizada regra pra uma tabela e ela já existe, então não recriá-la
   - [DEPENDENTE] Implementar pré-processamento + regras definidas em análise base
+
+# 2_JOIN
+  - [ ] 
 
 # MODE_C - Revisar arquitetura modelo - [ARQ_MODELO.md] 🔴 📄
   # 0_INGESTAO
