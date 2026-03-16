@@ -20,11 +20,13 @@ git push
 - [STDBY] Automatizar exportação/importação de notebooks via Databricks CLI ou API
 - [STDBY] Criar repositório Github e fornecer acesso para consulta do Workspace Claude
 - [STDBY] Criar 'agente' contextualizado para tarefas de desenvolvimento de ML Pipelines
-- [ ] Estudar frameworks 🔴
+- [ ] Estudar frameworks
+  - Boas práticas desenvolvimento de projetos Claude Clode
   - XP Pair Programming
   - Diagrama Entidade Relacionamento
   - Arquitetura SDD
-- [ ] Ver integração Claude Code/Genie Code no ambiente
+- [ ] Ver integração Claude Code/Genie Code no ambiente 🔴
+- [ ] Estudar Ralph Loops
 
 # Tópicos Databricks
 - [ ] Spark Declarative Pipelines
@@ -102,9 +104,6 @@ git push
   
   # 5_COMP
   - [ ] Desenvolver e testar código 🔴
-  - [ ] Definir análises
-    - [ ] Precision/Recall@K para o grid
-    - [ ] TP/FN@K para o grid
 
   # 6_REPORT
   - [ ] Referenciar run_id de modelos e gerar comparações
