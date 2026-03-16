@@ -53,7 +53,7 @@ git push
   - [DEPENDENTE] Implementar pré-processamento + regras definidas em análise base
 
 # 2_JOIN
-  - [ ] 
+  - OK
 
 # MODE_C
   # 0_INGESTAO
@@ -71,11 +71,11 @@ git push
     - [ ] VER COMO FICOU: Definir lista de atributos presentes em silver.cotacao_seg que vão passar pro FS 🔴
       - Em célula separada, quero dar dum df_seg.columns -> verificar quais colunas existem -> manualmente remover as que não serão enviadas
     - [ ] VER COMO FICOU: Definir regras 🔴
-      - [ ] Definir threshold de truncagem por cardinalidade de features (ajustado para 15)
-      - [ ] Remoção de features com >90% nulos
-      - [ ] Truncagem de alta cardinalidade (>15 categorias → top 10 + OUTROS)
-      - [ ] Remoção de colunas constantes
-      - [ ] Encoding → Imputer (média) → VectorAssembler
+      - [ ] Definir threshold de truncagem por cardinalidade de features (ajustado para 15) - DEFINIR EM PRE_PROC_MODEL
+      - [ ] Remoção de features com >90% nulos - DEFINIR EM PRE_PROC_MODEL
+      - [ ] Truncagem de alta cardinalidade (>15 categorias → top 10 + OUTROS) - DEFINIR EM PRE_PROC_MODEL
+      - [ ] Remoção de colunas constantes - DEFINIR EM PRE_PROC_MODEL
+      - [ ] Encoding → Imputer (média) → VectorAssembler - VERIFICAR SE ISSO JÁ FOI IMPLEMENTADO/EXISTE NECESSIDADE DE MODIFICAÇÃO
     
     # ETAPA FEATURE SELECTION
     - [STDBY] Implementar partição exclusiva ou CV na etapa de FS - explorar aspecto de variância com etapa de treinamento
@@ -94,9 +94,12 @@ git push
     - [STDBY] Entender como trabalhar com calibração do score e influência decisão de threshold
       - Platt Scaling, Isotonic Regression
 
+    - [ ] Verificar quais treinos do grid tão sendo registrados 🔴
+
   # 4_INFERENCIA
   - [ ] Ajustar nome tabela de inferência criada 🔴
   - [ ] Ajustar nome runs 🔴
+    - Remover _MODE_ (coluna mode_code já é logada)
   - [ ] Entender Listas de Tipo (MODE_C) 🔴
     - Qual o impacto desta lista e como faço para defini-la de forma mais robusta?
     - Ao invés de redefinir, reutilizar de 3_TREINO_MODE_C

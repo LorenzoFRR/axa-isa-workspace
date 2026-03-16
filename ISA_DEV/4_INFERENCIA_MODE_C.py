@@ -224,11 +224,17 @@ else:
     FEATURE_COLS_USED = json.loads(treino_run_data.params["feature_cols"])
     print("• feature_cols    : lido do MLflow →", FEATURE_COLS_USED)
 
-treino_cat_cols = [c for c in FEATURE_COLS_USED if c in FS_CAT_COLS]
-treino_num_cols = [c for c in FEATURE_COLS_USED if c in FS_DECIMAL_COLS + FS_DIAS_COLS]
-
-print("• treino_cat_cols :", treino_cat_cols)
-print("• treino_num_cols :", treino_num_cols)
+if "treino_cat_cols" in treino_run_data.params and "treino_num_cols" in treino_run_data.params:
+    treino_cat_cols = json.loads(treino_run_data.params["treino_cat_cols"])
+    treino_num_cols = json.loads(treino_run_data.params["treino_num_cols"])
+    print("• treino_cat_cols : lido do MLflow →", treino_cat_cols)
+    print("• treino_num_cols : lido do MLflow →", treino_num_cols)
+else:
+    # Fallback para runs treinadas antes desta versão
+    treino_cat_cols = [c for c in FEATURE_COLS_USED if c in FS_CAT_COLS]
+    treino_num_cols = [c for c in FEATURE_COLS_USED if c in FS_DECIMAL_COLS + FS_DIAS_COLS]
+    print("• treino_cat_cols : derivado localmente (fallback) →", treino_cat_cols)
+    print("• treino_num_cols : derivado localmente (fallback) →", treino_num_cols)
 
 # COMMAND ----------
 

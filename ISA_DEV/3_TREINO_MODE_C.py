@@ -17,7 +17,7 @@ PR_TREINO_NAME  = "T_PR_TREINO"
 MODE_CODE       = "C"
 MODE_NAME       = f"T_MODE_{MODE_CODE}"
 
-PR_RUN_ID_OVERRIDE        = ""
+PR_RUN_ID_OVERRIDE        = "21f1184afb354159b325ad87bca3c50d"
 MODE_RUN_ID_OVERRIDE      = ""
 PRE_PROC_RUN_ID_OVERRIDE  = ""
 FS_RUN_ID_OVERRIDE        = ""
@@ -30,7 +30,7 @@ STEP_TREINO_NAME            = "T_TREINO"
 # =========================
 # Versionamento
 # =========================
-TREINO_VERSAO            = "V1"
+TREINO_VERSAO            = "V9.0.0"
 TREINO_VERSAO_TABLE_SAFE = TREINO_VERSAO.replace(".", "_")
 VERSAO_REF               = TREINO_VERSAO
 
@@ -44,7 +44,7 @@ def run_name_vts(base: str) -> str:
 # =========================
 # INPUT
 # =========================
-COTACAO_SEG_FQN = "silver.cotacao_seg_..."  # <<< AJUSTE
+COTACAO_SEG_FQN = "silver.cotacao_seg_20260310_163401"  # <<< AJUSTE
 
 # =========================
 # OUTPUT
@@ -81,26 +81,18 @@ HIGH_CARD_THRESHOLD = 15
 HIGH_CARD_TOP_N     = 10
 OUTROS_LABEL        = "OUTROS"
 
-# Colunas candidatas — definidas aqui, reutilizadas pelo FS e pelo TREINO
-# Ajustar após inspecionar df_seg.columns.
-EXCLUIR_DE_FEATURES = set()   # exclusões explícitas e documentadas
+# Colunas excluídas estruturalmente — nunca serão features independente de toggles.
+COLS_NEVER_FEATURE = [
+    ID_COL, "CD_DOC_CORRETOR", "TS_ARQ", SEG_COL, DATE_COL,
+    STATUS_COL, LABEL_COL, "MES",
+]
 
-FS_DECIMAL_COLS = [
-    "VL_PREMIO_ALVO", "VL_PREMIO_LIQUIDO", "VL_PRE_TOTAL",
-    "VL_ENDOSSO_PREMIO_TOTAL", "VL_GWP_CORRETOR_RESUMO",
-]
-FS_DIAS_COLS = [
-    "DIAS_INICIO_VIGENCIA", "DIAS_VALIDADE", "DIAS_ANALISE_SUBSCRICAO",
-    "DIAS_FIM_ANALISE_SUBSCRICAO", "DIAS_COTACAO", "DIAS_ULTIMA_ATUALIZACAO",
-]
-FS_CAT_COLS = [
-    "INTERMENDIARIO_PERFIL",
-    "DS_PRODUTO_NOME",
-    "DS_SISTEMA",
-    "CD_FILIAL_RESPONSAVEL_COTACAO",
-    "DS_ATIVIDADE_SEGURADO",
-    "DS_GRUPO_CORRETOR_SEGMENTO",
-]
+# Toggles de features — True = entra no pipeline | False = bloqueada
+# Tipo (cat/num) é inferido automaticamente do schema — sem necessidade de classificar aqui.
+# Executar a célula de inspeção abaixo para gerar este dict a partir da tabela.
+FEATURE_CANDIDATES = {
+    # <<< cole o output da célula de inspeção e ajuste os toggles >>>
+}
 
 FS_METHODS_CONFIG = {
     "lr_l1": {"maxIter": 100, "regParam": 0.01, "elasticNetParam": 1.0},
@@ -108,7 +100,7 @@ FS_METHODS_CONFIG = {
     "gbt":   {"maxIter": 80,  "maxDepth": 5, "stepSize": 0.1},
 }
 
-TOPK_LIST = [5, 7, 12]
+TOPK_LIST = [5]
 
 print("✅ CONFIG MODE_C carregada")
 print("• input         :", COTACAO_SEG_FQN)
@@ -116,6 +108,30 @@ print("• mode          :", MODE_CODE)
 print("• versao        :", TREINO_VERSAO)
 print("• seg_target    :", SEG_TARGET)
 print("• split_salt    :", SPLIT_SALT)
+
+# COMMAND ----------
+
+# MAGIC %md
+# MAGIC ### Inspeção de colunas candidatas
+# MAGIC Executar esta célula para gerar `FEATURE_CANDIDATES` a partir da tabela.
+# MAGIC Copie o output na Config acima e ajuste os toggles antes de rodar o pipeline.
+
+# COMMAND ----------
+
+_df_inspect = spark.table(COTACAO_SEG_FQN)
+_schema_map = dict(_df_inspect.dtypes)
+_never_feat = set(COLS_NEVER_FEATURE)
+_candidates = [c for c in _df_inspect.columns if c not in _never_feat]
+
+print("# ─── Cole em FEATURE_CANDIDATES na Config ──────────────────────────────")
+print("FEATURE_CANDIDATES = {")
+for _c in _candidates:
+    _t   = _schema_map[_c]
+    _pad = " " * max(1, 42 - len(_c))
+    print(f'    "{_c}":{_pad}True,   # {_t}')
+print("}")
+print()
+print(f"# Candidatas: {len(_candidates)} | Excluídas estruturalmente ({len(_never_feat)}): {sorted(_never_feat)}")
 
 # COMMAND ----------
 
@@ -656,10 +672,6 @@ with mlflow.start_run(**_fs_kw, nested=True) as fs_container:
             "fs_methods":              json.dumps(list(FS_METHODS_CONFIG.keys())),
             "fs_methods_config":       json.dumps(FS_METHODS_CONFIG),
             "topk_list":               json.dumps(TOPK_LIST),
-            "fs_decimal_cols":         json.dumps(FS_DECIMAL_COLS),
-            "fs_dias_cols":            json.dumps(FS_DIAS_COLS),
-            "fs_cat_cols":             json.dumps(FS_CAT_COLS),
-            "excluir_de_features":     json.dumps(sorted(EXCLUIR_DE_FEATURES)),
             "ensemble_type":           "weighted_auc_pr",
             "mi_parallel":             "true",
             "mi_in_ensemble":          "false",
@@ -679,6 +691,32 @@ with mlflow.start_run(**_fs_kw, nested=True) as fs_container:
         mlflow.log_metric("n_rows_seg", n_rows_seg)
         if n_rows_seg == 0:
             raise ValueError(f"❌ Nenhuma linha para SEG_TARGET='{SEG_TARGET}' em {DF_MODEL_FQN}")
+
+        # ── Derivar cat/num a partir do schema e dos toggles FEATURE_CANDIDATES ──
+        _schema_fs   = dict(df_seg.dtypes)
+        _fc_enabled  = [c for c, v in FEATURE_CANDIDATES.items() if v     and c in _schema_fs]
+        _fc_disabled = [c for c, v in FEATURE_CANDIDATES.items() if not v and c in _schema_fs]
+        _fc_absent   = [c for c in FEATURE_CANDIDATES if c not in _schema_fs]
+
+        FS_CAT_COLS = [c for c in _fc_enabled if _schema_fs[c] == "string"]
+        FS_NUM_COLS = [c for c in _fc_enabled if _schema_fs[c] != "string"]
+        # Aliases mantidos para compatibilidade downstream (DECIMAL e DIAS unificados em NUM)
+        FS_DECIMAL_COLS     = FS_NUM_COLS
+        FS_DIAS_COLS        = []
+        EXCLUIR_DE_FEATURES = set()
+
+        if _fc_absent:
+            print(f"⚠️  Colunas em FEATURE_CANDIDATES ausentes na tabela: {_fc_absent}")
+        print(f"• cat_cols ({len(FS_CAT_COLS)}): {FS_CAT_COLS}")
+        print(f"• num_cols ({len(FS_NUM_COLS)}): {FS_NUM_COLS}")
+        print(f"• disabled ({len(_fc_disabled)}): {_fc_disabled}")
+
+        mlflow.log_params({
+            "feature_candidates_enabled":  json.dumps(_fc_enabled),
+            "feature_candidates_disabled": json.dumps(_fc_disabled),
+            "feature_type_cat":            json.dumps(FS_CAT_COLS),
+            "feature_type_num":            json.dumps(FS_NUM_COLS),
+        })
 
         # ── [2] Cleaning ──────────────────────────────────────────────────
         df_clean = df_seg
@@ -1007,22 +1045,22 @@ with mlflow.start_run(**_fs_kw, nested=True) as fs_container:
 # COMMAND ----------
 
 # Chave do feature set gerado pelo FS — deve existir em FS_FEATURE_SETS
-TREINO_FEATURE_SET_KEY = "top_7"  # <<< AJUSTE
+TREINO_FEATURE_SET_KEY = "top_5"  # <<< AJUSTE
 
 # Class weight
 USE_CLASS_WEIGHT       = "auto"   # "auto" | True | False
 CLASS_WEIGHT_THRESHOLD = 0.30
 
 # CV + grid
-CV_FOLDS  = 3
+CV_FOLDS  = 2
 CV_SEED   = 42
 CV_METRIC = "areaUnderPR"
 
 # Grid de hiperparâmetros
 # Listas: variam no grid. Scalar (maxIter): fixo em todos os combos.
 GBT_PARAM_GRID = {
-    "maxDepth": [4, 6],
-    "stepSize": [0.05, 0.1],
+    "maxDepth": [4],
+    "stepSize": [0.1],
     "maxIter":  100,
 }
 
@@ -1224,6 +1262,8 @@ with mlflow.start_run(**_tr_kw, nested=True) as treino_container:
             "pr_run_id":               PR_RUN_ID,
             "mode_run_id":             MODE_RUN_ID,
             "treino_container_run_id": TREINO_CONTAINER_RUN_ID,
+            "treino_cat_cols":         json.dumps(treino_cat_cols),
+            "treino_num_cols":         json.dumps(treino_num_cols),
             "note_mode_c":             "todos_combos_salvos_sem_selecao_vencedor",
         })
 
