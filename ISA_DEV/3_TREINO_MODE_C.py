@@ -298,6 +298,33 @@ def build_tables_lineage_fs() -> dict:
     }
 
 
+def compute_top_vals(df: DataFrame, col_name: str, top_n: int) -> list:
+    """
+    Calcula os top_n valores mais frequentes de col_name (excluindo nulos/brancos).
+    Retorna lista de valores — usado para truncagem de cardinalidade rastreável.
+    """
+    return (
+        df.filter(F.col(col_name).isNotNull() & (F.trim(F.col(col_name)) != ""))
+          .groupBy(col_name).count()
+          .orderBy(F.col("count").desc())
+          .limit(top_n)
+          .select(col_name)
+          .rdd.flatMap(lambda x: x)
+          .collect()
+    )
+
+
+def apply_truncation(df: DataFrame, col_name: str, top_vals: list, outros: str = "OUTROS") -> DataFrame:
+    """
+    Substitui valores fora de top_vals (incluindo nulos/brancos) por outros.
+    Separado de compute_top_vals para reutilizar top_vals_by_col salvo no artifact store.
+    """
+    return df.withColumn(
+        col_name,
+        F.when(F.col(col_name).isin(top_vals), F.col(col_name)).otherwise(F.lit(outros)),
+    )
+
+
 print("✅ Helpers globais carregados")
 
 # COMMAND ----------
@@ -384,6 +411,12 @@ TOGGLES_RULES_BUILD_VALID = {
     "BUILD_R04": True,  # Remover colunas auxiliares do split
 }
 
+TOGGLES_RULES_FEATURE_PREP = {
+    "PP_R04": True,   # Remoção de features com >NULL_DROP_PCT nulos
+    "PP_R05": True,   # Truncagem de alta cardinalidade (>HIGH_CARD_THRESHOLD → top HIGH_CARD_TOP_N + OUTROS)
+    "PP_R06": True,   # Remoção de features constantes (cardinalidade <= 1)
+}
+
 # COMMAND ----------
 
 # MAGIC %md
@@ -437,11 +470,27 @@ RULES_BUILD_VALID = [
              enabled=TOGGLES_RULES_BUILD_VALID["BUILD_R04"]),
 ]
 
+RULES_FEATURE_PREP = [
+    rule_def("PP_R04",
+             f"Remoção de features com >{int(NULL_DROP_PCT * 100)}% nulos (null_drop_pct={NULL_DROP_PCT})",
+             lambda df: df,
+             enabled=TOGGLES_RULES_FEATURE_PREP["PP_R04"]),
+    rule_def("PP_R05",
+             f"Truncagem de alta cardinalidade: >{HIGH_CARD_THRESHOLD} categorias → top {HIGH_CARD_TOP_N} + '{OUTROS_LABEL}'",
+             lambda df: df,
+             enabled=TOGGLES_RULES_FEATURE_PREP["PP_R05"]),
+    rule_def("PP_R06",
+             "Remoção de features constantes (cardinalidade <= 1)",
+             lambda df: df,
+             enabled=TOGGLES_RULES_FEATURE_PREP["PP_R06"]),
+]
+
 RULES_BY_BLOCK = {
     "rules_on_df_seg":          RULES_ON_DF_SEG,
     "rules_build_base":         RULES_BUILD_BASE,
     "rules_build_df_model":     RULES_BUILD_MODEL,
     "rules_build_df_validacao": RULES_BUILD_VALID,
+    "rules_feature_prep":       RULES_FEATURE_PREP,
 }
 
 print("✅ RULES_BY_BLOCK definido")
@@ -449,6 +498,7 @@ print("• rules_on_df_seg         :", len(RULES_ON_DF_SEG))
 print("• rules_build_base        :", len(RULES_BUILD_BASE))
 print("• rules_build_df_model    :", len(RULES_BUILD_MODEL))
 print("• rules_build_df_validacao:", len(RULES_BUILD_VALID))
+print("• rules_feature_prep      :", len(RULES_FEATURE_PREP))
 
 # COMMAND ----------
 
@@ -539,10 +589,95 @@ with mlflow.start_run(**_pp_kw, nested=True) as pp_container:
         exec_log["rules_on_df_seg"] = exec_log_seg
         mlflow.log_metric("n_seg_after_rules", int(df_seg_pp.count()))
 
-        df_base, exec_log["rules_build_base"]         = apply_rules_block("rules_build_base", df_seg_pp, RULES_BUILD_BASE)
+        df_base, exec_log["rules_build_base"]             = apply_rules_block("rules_build_base", df_seg_pp, RULES_BUILD_BASE)
         df_model_tmp, exec_log["rules_build_df_model"]     = apply_rules_block("rules_build_df_model", df_base, RULES_BUILD_MODEL)
         df_valid_tmp, exec_log["rules_build_df_validacao"] = apply_rules_block("rules_build_df_validacao", df_base, RULES_BUILD_VALID)
 
+        # ── PP_R04 / PP_R05 / PP_R06 — feature prep aplicado antes de salvar ────
+        # Centralizado aqui para que df_model já salvo reflita todos os tratamentos.
+        # top_vals_by_col_prep fica disponível como variável Python para T_TREINO.
+        _schema_pp      = dict(df_model_tmp.dtypes)
+        _fc_all_enabled = [c for c, v in FEATURE_CANDIDATES.items() if v and c in _schema_pp]
+        _pp_cat_cols    = [c for c in _fc_all_enabled if _schema_pp[c] == "string"]
+        _pp_num_cols    = [c for c in _fc_all_enabled if _schema_pp[c] != "string"]
+        _pp_all_cand    = _pp_cat_cols + _pp_num_cols
+
+        n_rows_pp = int(df_model_tmp.count())
+
+        # PP_R04 — remoção de features com >NULL_DROP_PCT nulos
+        null_counts_pp  = df_model_tmp.agg(*[
+            F.sum(F.when(F.col(c).isNull(), 1).otherwise(0)).alias(c) for c in _pp_all_cand
+        ]).collect()[0].asDict()
+        null_profile_pp = [
+            {"col": c, "nulls": int(null_counts_pp[c]),
+             "pct_null": round(null_counts_pp[c] / n_rows_pp, 4)}
+            for c in _pp_all_cand
+        ]
+        if TOGGLES_RULES_FEATURE_PREP["PP_R04"]:
+            drop_null_cols_pp = sorted({r["col"] for r in null_profile_pp if r["pct_null"] > NULL_DROP_PCT})
+            if drop_null_cols_pp:
+                df_model_tmp = df_model_tmp.drop(*drop_null_cols_pp)
+                df_valid_tmp = df_valid_tmp.drop(*drop_null_cols_pp)
+            exec_log["PP_R04"] = {"status": "APPLIED", "drop_null_cols": drop_null_cols_pp}
+        else:
+            drop_null_cols_pp = []
+            exec_log["PP_R04"] = {"status": "SKIPPED_DISABLED"}
+
+        # PP_R05 — truncagem de alta cardinalidade
+        cat_present_pp  = [c for c in _pp_cat_cols if c in df_model_tmp.columns]
+        cat_card_pre_pp = [
+            {"col": c, "count_distinct": int(df_model_tmp.select(F.countDistinct(c)).collect()[0][0])}
+            for c in cat_present_pp
+        ]
+        high_card_cols_pp    = [r["col"] for r in cat_card_pre_pp if r["count_distinct"] > HIGH_CARD_THRESHOLD]
+        top_vals_by_col_prep: dict = {}
+        if TOGGLES_RULES_FEATURE_PREP["PP_R05"]:
+            for c in high_card_cols_pp:
+                top_vals_by_col_prep[c] = compute_top_vals(df_model_tmp, c, HIGH_CARD_TOP_N)
+                df_model_tmp = apply_truncation(df_model_tmp, c, top_vals_by_col_prep[c], OUTROS_LABEL)
+                df_valid_tmp = apply_truncation(df_valid_tmp, c, top_vals_by_col_prep[c], OUTROS_LABEL)
+            exec_log["PP_R05"] = {"status": "APPLIED", "high_card_cols": high_card_cols_pp}
+        else:
+            exec_log["PP_R05"] = {"status": "SKIPPED_DISABLED"}
+
+        # PP_R06 — remoção de features constantes
+        cat_for_const_pp = [c for c in cat_present_pp if c in df_model_tmp.columns]
+        if TOGGLES_RULES_FEATURE_PREP["PP_R06"]:
+            drop_const_cols_pp = sorted({
+                c for c in cat_for_const_pp
+                if int(df_model_tmp.select(F.countDistinct(c)).collect()[0][0]) <= 1
+            })
+            if drop_const_cols_pp:
+                df_model_tmp = df_model_tmp.drop(*drop_const_cols_pp)
+                df_valid_tmp = df_valid_tmp.drop(*drop_const_cols_pp)
+            exec_log["PP_R06"] = {"status": "APPLIED", "drop_constant_cols": drop_const_cols_pp}
+        else:
+            drop_const_cols_pp = []
+            exec_log["PP_R06"] = {"status": "SKIPPED_DISABLED"}
+
+        mlflow.log_params({
+            "null_drop_pct":       NULL_DROP_PCT,
+            "high_card_threshold": HIGH_CARD_THRESHOLD,
+            "high_card_top_n":     HIGH_CARD_TOP_N,
+            "outros_label":        OUTROS_LABEL,
+        })
+        mlflow.log_dict(
+            {"null_profile": null_profile_pp, "drop_null_cols": drop_null_cols_pp},
+            "preproc_feature/null_profile.json",
+        )
+        mlflow.log_dict(
+            {
+                "cat_cardinality_pre": cat_card_pre_pp,
+                "high_card_cols":      high_card_cols_pp,
+                "top_n":               HIGH_CARD_TOP_N,
+                "top_vals_by_col":     top_vals_by_col_prep,
+            },
+            "preproc_feature/cat_cardinality.json",
+        )
+        mlflow.log_dict(
+            rules_catalog_for_logging({"rules_feature_prep": RULES_FEATURE_PREP}),
+            "preproc_feature/rules_feature_prep_catalog.json",
+        )
         mlflow.log_dict(exec_log, "rules_execution.json")
 
         n_model = int(df_model_tmp.count())
@@ -699,38 +834,10 @@ print("✅ Helpers FS carregados")
 
 # COMMAND ----------
 
-# =========================
-# Toggles — T_FEATURE_SELECTION
-# True = etapa ativa | False = desabilitada
-# =========================
-TOGGLES_RULES_FEATURE_PREP = {
-    "PP_R04": True,   # Remoção de features com >NULL_DROP_PCT nulos
-    "PP_R05": True,   # Truncagem de alta cardinalidade (>HIGH_CARD_THRESHOLD → top HIGH_CARD_TOP_N + OUTROS)
-    "PP_R06": True,   # Remoção de features constantes (cardinalidade <= 1)
-}
-
-# Catálogo de regras — T_FEATURE_SELECTION
-# A lógica efetiva é executada inline no bloco de execução (onde o df e as listas de colunas
-# estão disponíveis). Estas entradas servem para rastreabilidade no catálogo e log MLflow.
-RULES_FEATURE_PREP = [
-    rule_def("PP_R04",
-             f"Remoção de features com >{int(NULL_DROP_PCT * 100)}% nulos (null_drop_pct={NULL_DROP_PCT})",
-             lambda df: df,
-             enabled=TOGGLES_RULES_FEATURE_PREP["PP_R04"]),
-    rule_def("PP_R05",
-             f"Truncagem de alta cardinalidade: >{HIGH_CARD_THRESHOLD} categorias → top {HIGH_CARD_TOP_N} + '{OUTROS_LABEL}'",
-             lambda df: df,
-             enabled=TOGGLES_RULES_FEATURE_PREP["PP_R05"]),
-    rule_def("PP_R06",
-             "Remoção de features constantes (cardinalidade <= 1)",
-             lambda df: df,
-             enabled=TOGGLES_RULES_FEATURE_PREP["PP_R06"]),
-]
-
-print("✅ RULES_FEATURE_PREP definido")
-for _r in RULES_FEATURE_PREP:
-    _status = "ON " if _r["enabled"] else "OFF"
-    print(f"  [{_status}] {_r['rule_id']}: {_r['description']}")
+# TOGGLES_RULES_FEATURE_PREP e RULES_FEATURE_PREP definidos em T_PRE_PROC_MODEL.
+# PP_R04/PP_R05/PP_R06 são executadas sobre df_model antes de ser salvo.
+# Esta etapa carrega dados já limpos — consultar artifacts preproc_feature/ do run T_PRE_PROC_MODEL.
+print("ℹ️  PP_R04/PP_R05/PP_R06 aplicadas em T_PRE_PROC_MODEL (ver preproc_feature/)")
 
 # COMMAND ----------
 
@@ -837,50 +944,42 @@ with mlflow.start_run(**_fs_kw, nested=True) as fs_container:
         for c in [c for c in FS_DECIMAL_COLS + FS_DIAS_COLS if c in df_base.columns]:
             df_base = df_base.withColumn(c, F.col(c).cast("double"))
 
-        # ── [3] Perfil de nulos → drop_null_cols ──────────────────────────
+        # ── [3] Perfil de nulos — informativo (PP_R04 já aplicado em T_PRE_PROC_MODEL) ──
         cols_candidate_raw = FS_DECIMAL_COLS + FS_DIAS_COLS + FS_CAT_COLS
         cols_candidate     = [c for c in cols_candidate_raw if c in df_base.columns and c not in EXCLUIR_DE_FEATURES]
         null_counts        = df_base.agg(*[
             F.sum(F.when(F.col(c).isNull(), 1).otherwise(0)).alias(c) for c in cols_candidate
         ]).collect()[0].asDict()
-
         null_profile   = [{"col": c, "nulls": int(null_counts[c]), "pct_null": null_counts[c] / n_rows_seg}
                           for c in cols_candidate]
-        if TOGGLES_RULES_FEATURE_PREP["PP_R04"]:
-            drop_null_cols = {r["col"] for r in null_profile if r["pct_null"] > NULL_DROP_PCT}
-        else:
-            drop_null_cols = set()
-        mlflow.log_dict({"null_profile": null_profile, "drop_null_cols": sorted(drop_null_cols)},
-                        "fs_stage1/null_profile.json")
+        # PP_R04 já aplicado em T_PRE_PROC_MODEL — colunas null-heavy removidas do df
+        drop_null_cols = set()
+        mlflow.log_dict(
+            {"null_profile": null_profile, "drop_null_cols": [],
+             "note": "PP_R04 aplicado em T_PRE_PROC_MODEL — colunas null-heavy já removidas do df"},
+            "fs_stage1/null_profile.json",
+        )
 
-        # ── [4] Cardinalidade + truncagem OUTROS ──────────────────────────
-        cat_present  = [c for c in FS_CAT_COLS if c in df_base.columns and c not in drop_null_cols and c not in EXCLUIR_DE_FEATURES]
+        # ── [4] Cardinalidade — informativo (PP_R05 já aplicado em T_PRE_PROC_MODEL) ──
+        cat_present  = [c for c in FS_CAT_COLS if c in df_base.columns and c not in EXCLUIR_DE_FEATURES]
         cat_card_pre = [{"col": c, "count_distinct": int(df_base.select(F.countDistinct(c)).collect()[0][0])}
                         for c in cat_present]
         high_card_cols = [r["col"] for r in cat_card_pre if r["count_distinct"] > HIGH_CARD_THRESHOLD]
-
-        if TOGGLES_RULES_FEATURE_PREP["PP_R05"]:
-            for c in high_card_cols:
-                df_base = truncate_high_cardinality(df_base, c, top_n=HIGH_CARD_TOP_N, outros=OUTROS_LABEL)
-
-        cat_card_post = [{"col": c, "count_distinct_post": int(df_base.select(F.countDistinct(c)).collect()[0][0])}
-                         for c in cat_present]
-
-        mlflow.log_dict({
-            "cat_cardinality_pre":  cat_card_pre,
-            "high_card_cols":       high_card_cols,
-            "high_card_top_n":      HIGH_CARD_TOP_N,
-            "outros_label":         OUTROS_LABEL,
-            "cat_cardinality_post": cat_card_post,
-        }, "fs_stage1/cat_cardinality.json")
+        # PP_R05 já aplicado em T_PRE_PROC_MODEL — sem truncagem nesta etapa
+        mlflow.log_dict(
+            {
+                "cat_cardinality": cat_card_pre,
+                "high_card_cols":  high_card_cols,
+                "note":            "PP_R05 aplicado em T_PRE_PROC_MODEL — truncagem já realizada no df",
+            },
+            "fs_stage1/cat_cardinality.json",
+        )
 
         # ── [5] Listas finais de features ─────────────────────────────────
-        _id_cols_fs         = [ID_COL, "CD_DOC_CORRETOR", "TS_ARQ", SEG_COL, DATE_COL]
-        _drop_base_fs       = _id_cols_fs + [STATUS_COL]
-        if TOGGLES_RULES_FEATURE_PREP["PP_R06"]:
-            drop_constant_cols = {r["col"] for r in cat_card_pre if r["count_distinct"] <= 1}
-        else:
-            drop_constant_cols = set()
+        _id_cols_fs     = [ID_COL, "CD_DOC_CORRETOR", "TS_ARQ", SEG_COL, DATE_COL]
+        _drop_base_fs   = _id_cols_fs + [STATUS_COL]
+        # PP_R06 já aplicado em T_PRE_PROC_MODEL — colunas constantes removidas do df
+        drop_constant_cols  = set()
         DROP_FEATURES_FINAL = set(_drop_base_fs) | drop_null_cols | drop_constant_cols | EXCLUIR_DE_FEATURES
 
         NUM_COLS_FINAL   = [c for c in FS_DECIMAL_COLS + FS_DIAS_COLS
@@ -893,17 +992,12 @@ with mlflow.start_run(**_fs_kw, nested=True) as fs_container:
             raise ValueError("❌ FEATURE_COLS_ALL vazio após drops.")
 
         mlflow.log_dict({
-            "null_drop_pct":       NULL_DROP_PCT,
-            "high_card_threshold": HIGH_CARD_THRESHOLD,
-            "high_card_top_n":     HIGH_CARD_TOP_N,
-            "high_card_cols":      high_card_cols,
-            "drop_null_cols":      sorted(drop_null_cols),
-            "drop_constant_cols":  sorted(drop_constant_cols),
             "excluir_de_features": sorted(EXCLUIR_DE_FEATURES),
             "drop_features_final": sorted(DROP_FEATURES_FINAL),
             "cat_cols_final":      CAT_COLS_FINAL,
             "num_cols_final":      NUM_COLS_FINAL,
             "features_total":      len(FEATURE_COLS_ALL),
+            "note":                "PP_R04/PP_R05/PP_R06 aplicados em T_PRE_PROC_MODEL",
         }, "fs_stage1/fs_feature_contract.json")
         mlflow.log_metric("n_features_candidate", len(FEATURE_COLS_ALL))
 
@@ -1254,33 +1348,6 @@ def kfold_split(df: DataFrame, n_folds: int, seed: int, id_col: str):
     return folds
 
 
-def compute_top_vals(df: DataFrame, col_name: str, top_n: int) -> list:
-    """
-    Calcula os top_n valores mais frequentes de col_name (excluindo nulos/brancos).
-    Retorna lista de valores — usado para truncagem de cardinalidade rastreável.
-    """
-    return (
-        df.filter(F.col(col_name).isNotNull() & (F.trim(F.col(col_name)) != ""))
-          .groupBy(col_name).count()
-          .orderBy(F.col("count").desc())
-          .limit(top_n)
-          .select(col_name)
-          .rdd.flatMap(lambda x: x)
-          .collect()
-    )
-
-
-def apply_truncation(df: DataFrame, col_name: str, top_vals: list, outros: str = "OUTROS") -> DataFrame:
-    """
-    Substitui valores fora de top_vals (incluindo nulos/brancos) por outros.
-    Separado de compute_top_vals para reutilizar top_vals_by_col salvo no artifact store.
-    """
-    return df.withColumn(
-        col_name,
-        F.when(F.col(col_name).isin(top_vals), F.col(col_name)).otherwise(F.lit(outros)),
-    )
-
-
 def build_tables_lineage_treino() -> dict:
     return {
         "stage":         "T_TREINO",
@@ -1337,14 +1404,10 @@ with mlflow.start_run(**_tr_kw, nested=True) as treino_container:
         for c in treino_num_cols:
             df_model_seg = df_model_seg.withColumn(c, F.col(c).cast("double"))
 
-        # Truncagem de cardinalidade — top_vals calculados uma única vez em df_model
-        # e salvos como artifact para reutilização no 4_INFERENCIA.
-        top_vals_by_col = {}
-        for c in treino_cat_cols:
-            card = int(df_model_seg.select(F.countDistinct(c)).collect()[0][0])
-            if card > HIGH_CARD_THRESHOLD:
-                top_vals_by_col[c] = compute_top_vals(df_model_seg, c, HIGH_CARD_TOP_N)
-                df_model_seg = apply_truncation(df_model_seg, c, top_vals_by_col[c], OUTROS_LABEL)
+        # Truncagem já aplicada em T_PRE_PROC_MODEL (PP_R05).
+        # top_vals_by_col_prep calculado lá e disponível como variável Python.
+        # Reutilizado aqui para salvar como artifact para o 4_INFERENCIA.
+        top_vals_by_col = top_vals_by_col_prep
 
         # Class weight
         df_model_seg, label_rate, weight_pos, apply_cw = add_class_weights(

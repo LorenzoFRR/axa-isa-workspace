@@ -42,12 +42,17 @@ git push
 
 ####################################################################
 
-# Pastas/Workspace
+# Direcionamentos Gerais
+- [STDBY] Fazer ingestão completa para desenvolvimento 
+- [STDBY] Criar modelos abrindo além de SEG_NOVO/RENOVACAO/MANUAL/DIGITAL
+- [ ] Treinar modelos com novas abordagens
+  - [ ] Utilizar dados de corretor atualizados 🔵
+    - HR, QTDs
+    - HR somente
+  - [ ] Utilizar classificação, removendo HR, QTDs 🔵
+  - [STDBY] Utilizar clusterização
 
 ####################################################################
-- [ ] Fazer ingestão completa para desenvolvimento 🟡
-- [ ] Fazer análise base (pré processamento, regras de negócio) - (PRE_PROC, PRE_PROC_MODEL) - [ANALISE_BASE.md] 🔵 📄
-- [ ] Ver resultados Gabriel 16/03 🔴
 
 # 1_PRE_PROC
   - [STDBY] Implementar lógica: se não foi atualizada regra pra uma tabela e ela já existe, então não recriá-la
@@ -67,16 +72,13 @@ git push
   - OK
 
   # 3_TREINO
-  - [ ] 🔴 AJUSTE FEITO EM 16/03 (VERIFICAR): Adicionar lineage nos logs
+  - [x] Adicionar lineage nos logs
 
     # ETAPA PRE_PROC_MODEL
-    - [ ] 🔴 AJUSTE FEITO EM 16/03 (VERIFICAR): Definir lista de atributos presentes em silver.cotacao_seg que vão passar pro FS 
-    - [ ] 🔴 AJUSTE FEITO EM 16/03 (VERIFICAR): Definir regras/pre-proc
-      -  Definir threshold de truncagem por cardinalidade de features (ajustado para 15) - DEFINIR EM PRE_PROC_MODEL
-      - Remoção de features com >90% nulos - DEFINIR EM PRE_PROC_MODEL
-      - Remoção de colunas constantes - DEFINIR EM PRE_PROC_MODEL
-      - Encoding → Imputer (média) → VectorAssembler - VERIFICAR SE ISSO JÁ FOI IMPLEMENTADO/EXISTE NECESSIDADE DE MODIFICAÇÃO
-    
+    - [x] Definir lista de atributos presentes em silver.cotacao_seg que vão passar pro FS
+    - [x] Executar regras/pre-proc
+    - [ ] Ajustar json pra acomodar 'rules_feature_prep' 🟠
+
     # ETAPA FEATURE SELECTION
     - [STDBY] Implementar partição exclusiva ou CV na etapa de FS - explorar aspecto de variância com etapa de treinamento
     - [STDBY] Verificar possibilidade de explorar splits, SEEDs, params, etc
@@ -86,6 +88,7 @@ git push
       - [STDBY] SHAP // Fornece sentido de relação (positivo, negativo)
       - [STDBY] Permutation Importance
       - [STDBY] RFE - Recursive Feature Elimination
+    - [ ] Ver FEATURE_CANDIDATES que não estão contempladas na tabela 🟠
 
     # ETAPA TREINO
     - [STDBY] Avaliar implementação Modelos de ranking direto (LambdaMART, LambdaRank)
@@ -95,7 +98,6 @@ git push
       - Platt Scaling, Isotonic Regression
 
     - [ ] 🔴 AJUSTE FEITO EM 16/03 (VERIFICAR): Verificar quais treinos do grid tão sendo registrados
-      - A princípio, o erro foi no grid definido. CV_FOLDS = 2 não cria 2 treinos - serve apenas pra estimar performance. Posso tentar usar mais folds. De qualquer forma, posso tentar treinar um grid de 2 modelos, que independe do CV_FOLDS, pra ver se o pipeline tá funcionando
     - [ ] 🔴 AJUSTE FEITO EM 16/03 (VERIFICAR): Para etapa de INFERENCIA, adiante
       - Quero ter apenas uma tabela por inferencia. Como terei vários modelos utilizados paralelamente para inferir, terei colunas repetidas, variando o modelo (model_id), como por exemplo
         - p_emitida_model_id
@@ -106,6 +108,7 @@ git push
 
   # 4_INFERENCIA
   - [ ] Ajustar nome tabela de inferência criada (pode ser _mode_code_segmentacao_timestamp) 🔴
+  - [ ] Verificar se tabela de inferência contempla os demais modelos
   - [ ] Ajustar nome runs 🔴
     - Remover _MODE_ (coluna mode_code já é logada)
   - [ ] Entender Listas de Tipo (MODE_C) 🔴
