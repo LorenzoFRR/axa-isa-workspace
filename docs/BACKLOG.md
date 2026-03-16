@@ -47,6 +47,7 @@ git push
 ####################################################################
 - [ ] Fazer ingestão completa para desenvolvimento 🟡
 - [ ] Fazer análise base (pré processamento, regras de negócio) - (PRE_PROC, PRE_PROC_MODEL) - [ANALISE_BASE.md] 🔵 📄
+- [ ] Ver resultados Gabriel 16/03 🔴
 
 # 1_PRE_PROC
   - [STDBY] Implementar lógica: se não foi atualizada regra pra uma tabela e ela já existe, então não recriá-la
@@ -66,16 +67,15 @@ git push
   - OK
 
   # 3_TREINO
+  - [ ] 🔴 AJUSTE FEITO EM 16/03 (VERIFICAR): Adicionar lineage nos logs
 
     # ETAPA PRE_PROC_MODEL
-    - [ ] VER COMO FICOU: Definir lista de atributos presentes em silver.cotacao_seg que vão passar pro FS 🔴
-      - Em célula separada, quero dar dum df_seg.columns -> verificar quais colunas existem -> manualmente remover as que não serão enviadas
-    - [ ] VER COMO FICOU: Definir regras 🔴
-      - [ ] Definir threshold de truncagem por cardinalidade de features (ajustado para 15) - DEFINIR EM PRE_PROC_MODEL
-      - [ ] Remoção de features com >90% nulos - DEFINIR EM PRE_PROC_MODEL
-      - [ ] Truncagem de alta cardinalidade (>15 categorias → top 10 + OUTROS) - DEFINIR EM PRE_PROC_MODEL
-      - [ ] Remoção de colunas constantes - DEFINIR EM PRE_PROC_MODEL
-      - [ ] Encoding → Imputer (média) → VectorAssembler - VERIFICAR SE ISSO JÁ FOI IMPLEMENTADO/EXISTE NECESSIDADE DE MODIFICAÇÃO
+    - [ ] 🔴 AJUSTE FEITO EM 16/03 (VERIFICAR): Definir lista de atributos presentes em silver.cotacao_seg que vão passar pro FS 
+    - [ ] 🔴 AJUSTE FEITO EM 16/03 (VERIFICAR): Definir regras/pre-proc
+      -  Definir threshold de truncagem por cardinalidade de features (ajustado para 15) - DEFINIR EM PRE_PROC_MODEL
+      - Remoção de features com >90% nulos - DEFINIR EM PRE_PROC_MODEL
+      - Remoção de colunas constantes - DEFINIR EM PRE_PROC_MODEL
+      - Encoding → Imputer (média) → VectorAssembler - VERIFICAR SE ISSO JÁ FOI IMPLEMENTADO/EXISTE NECESSIDADE DE MODIFICAÇÃO
     
     # ETAPA FEATURE SELECTION
     - [STDBY] Implementar partição exclusiva ou CV na etapa de FS - explorar aspecto de variância com etapa de treinamento
@@ -94,10 +94,18 @@ git push
     - [STDBY] Entender como trabalhar com calibração do score e influência decisão de threshold
       - Platt Scaling, Isotonic Regression
 
-    - [ ] Verificar quais treinos do grid tão sendo registrados 🔴
+    - [ ] 🔴 AJUSTE FEITO EM 16/03 (VERIFICAR): Verificar quais treinos do grid tão sendo registrados
+      - A princípio, o erro foi no grid definido. CV_FOLDS = 2 não cria 2 treinos - serve apenas pra estimar performance. Posso tentar usar mais folds. De qualquer forma, posso tentar treinar um grid de 2 modelos, que independe do CV_FOLDS, pra ver se o pipeline tá funcionando
+    - [ ] 🔴 AJUSTE FEITO EM 16/03 (VERIFICAR): Para etapa de INFERENCIA, adiante
+      - Quero ter apenas uma tabela por inferencia. Como terei vários modelos utilizados paralelamente para inferir, terei colunas repetidas, variando o modelo (model_id), como por exemplo
+        - p_emitida_model_id
+        - rank_global_model_id
+        - treino_exec_model_id_run_id (caso esta coluna for específica por model_id)
+      Ou seja, minha ideia é ter as colunas repetidas, mantendo cada cotação com apenas uma linha. Assim poderei fazer as análises posteriores diretamente da mesma tabela.
+
 
   # 4_INFERENCIA
-  - [ ] Ajustar nome tabela de inferência criada 🔴
+  - [ ] Ajustar nome tabela de inferência criada (pode ser _mode_code_segmentacao_timestamp) 🔴
   - [ ] Ajustar nome runs 🔴
     - Remover _MODE_ (coluna mode_code já é logada)
   - [ ] Entender Listas de Tipo (MODE_C) 🔴

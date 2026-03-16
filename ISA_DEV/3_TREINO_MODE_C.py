@@ -91,7 +91,37 @@ COLS_NEVER_FEATURE = [
 # Tipo (cat/num) é inferido automaticamente do schema — sem necessidade de classificar aqui.
 # Executar a célula de inspeção abaixo para gerar este dict a partir da tabela.
 FEATURE_CANDIDATES = {
-    # <<< cole o output da célula de inspeção e ajuste os toggles >>>
+    "VL_PREMIO_ALVO":                            True,   # decimal(17,2)
+    "INTERMENDIARIO_PERFIL":                     True,   # string
+    "DT_INICIO_VIGENCIA":                        False,   # date
+    "VL_PREMIO_LIQUIDO":                         True,   # decimal(17,2)
+    "VL_PRE_TOTAL":                              True,   # decimal(17,2)
+    "DS_PRODUTO_NOME":                           True,   # string
+    "DS_SISTEMA":                                True,   # string
+    "VL_ENDOSSO_PREMIO_TOTAL":                   True,   # decimal(17,2)
+    "CD_FILIAL_RESPONSAVEL_COTACAO":             True,   # string
+    "DS_ATIVIDADE_SEGURADO":                     True,   # string
+    "DS_GRUPO_CORRETOR_SEGMENTO":                True,   # string
+    "DIAS_ULTIMA_ATUALIZACAO":                   False,   # int
+    "DIAS_VALIDADE":                             False,   # int
+    "DIAS_ANALISE_SUBSCRICAO":                   False,   # int
+    "DIAS_FIM_ANALISE_SUBSCRICAO":               False,   # int
+    "DIAS_COTACAO":                              False,   # int
+    "DIAS_INICIO_VIGENCIA":                      False,   # int
+    "VL_GWP_CORRETOR_resumo":                    True,   # decimal(17,2)
+    "QTD_ACORDO_COMERCIAL_resumo":               False,   # string
+    "QTD_COTACAO_2024_detalhe":                  False,   # string
+    "QTD_COTACAO_2025_detalhe":                  False,   # string
+    "QTD_COTACAO_M2_detalhe":                    False,   # string
+    "QTD_COTACAO_M3_detalhe":                    False,   # string
+    "QTD_EMITIDO_2024_detalhe":                  False,   # string
+    "QTD_EMITIDO_2025_detalhe":                  False,   # string
+    "QTD_EMITIDO_M2_detalhe":                    False,   # string
+    "QTD_EMITIDO_M3_detalhe":                    False,   # string
+    "HR_2024_detalhe":                           False,   # decimal(17,6)
+    "HR_2025_detalhe":                           False,   # decimal(17,6)
+    "HR_M2_detalhe":                             False,   # decimal(17,6)
+    "HR_M3_detalhe":                             False,   # decimal(17,6)
 }
 
 FS_METHODS_CONFIG = {
@@ -242,6 +272,31 @@ def label_rate_by_seg(df, seg_col, label_col):
               .agg(F.count(F.lit(1)).alias("n"), F.avg(F.col(label_col).cast("double")).alias("label_rate"))
               .orderBy(F.col("n").desc()).collect())
     return [{seg_col: r[seg_col], "n": int(r["n"]), "label_rate": float(r["label_rate"])} for r in rows]
+
+
+# =========================
+# Lineage helpers
+# =========================
+def build_tables_lineage_preproc() -> dict:
+    return {
+        "stage":         "T_PRE_PROC_MODEL",
+        "ts_exec":       TS_EXEC,
+        "treino_versao": TREINO_VERSAO,
+        "mode":          MODE_CODE,
+        "inputs":        {"cotacao_seg": COTACAO_SEG_FQN},
+        "outputs":       {"df_model": DF_MODEL_FQN, "df_validacao": DF_VALID_FQN},
+    }
+
+def build_tables_lineage_fs() -> dict:
+    return {
+        "stage":         "T_FEATURE_SELECTION",
+        "ts_exec":       TS_EXEC,
+        "treino_versao": TREINO_VERSAO,
+        "mode":          MODE_CODE,
+        "inputs":        {"df_model": DF_MODEL_FQN},
+        "seg_target":    SEG_TARGET,
+    }
+
 
 print("✅ Helpers globais carregados")
 
@@ -453,6 +508,7 @@ with mlflow.start_run(**_pp_kw, nested=True) as pp_container:
             "t_pre_proc_model_container_run_id": PREPROC_CONTAINER_RUN_ID,
         })
         mlflow.log_dict(rules_catalog_for_logging(RULES_BY_BLOCK), "rules_catalog.json")
+        mlflow.log_dict(build_tables_lineage_preproc(), "tables_lineage.json")
 
         df_seg_in = spark.table(COTACAO_SEG_FQN)
         n_seg_in  = int(df_seg_in.count())
@@ -639,6 +695,46 @@ print("✅ Helpers FS carregados")
 # COMMAND ----------
 
 # MAGIC %md
+# MAGIC ### Regras de pré-processamento de features — T_FEATURE_SELECTION
+
+# COMMAND ----------
+
+# =========================
+# Toggles — T_FEATURE_SELECTION
+# True = etapa ativa | False = desabilitada
+# =========================
+TOGGLES_RULES_FEATURE_PREP = {
+    "PP_R04": True,   # Remoção de features com >NULL_DROP_PCT nulos
+    "PP_R05": True,   # Truncagem de alta cardinalidade (>HIGH_CARD_THRESHOLD → top HIGH_CARD_TOP_N + OUTROS)
+    "PP_R06": True,   # Remoção de features constantes (cardinalidade <= 1)
+}
+
+# Catálogo de regras — T_FEATURE_SELECTION
+# A lógica efetiva é executada inline no bloco de execução (onde o df e as listas de colunas
+# estão disponíveis). Estas entradas servem para rastreabilidade no catálogo e log MLflow.
+RULES_FEATURE_PREP = [
+    rule_def("PP_R04",
+             f"Remoção de features com >{int(NULL_DROP_PCT * 100)}% nulos (null_drop_pct={NULL_DROP_PCT})",
+             lambda df: df,
+             enabled=TOGGLES_RULES_FEATURE_PREP["PP_R04"]),
+    rule_def("PP_R05",
+             f"Truncagem de alta cardinalidade: >{HIGH_CARD_THRESHOLD} categorias → top {HIGH_CARD_TOP_N} + '{OUTROS_LABEL}'",
+             lambda df: df,
+             enabled=TOGGLES_RULES_FEATURE_PREP["PP_R05"]),
+    rule_def("PP_R06",
+             "Remoção de features constantes (cardinalidade <= 1)",
+             lambda df: df,
+             enabled=TOGGLES_RULES_FEATURE_PREP["PP_R06"]),
+]
+
+print("✅ RULES_FEATURE_PREP definido")
+for _r in RULES_FEATURE_PREP:
+    _status = "ON " if _r["enabled"] else "OFF"
+    print(f"  [{_status}] {_r['rule_id']}: {_r['description']}")
+
+# COMMAND ----------
+
+# MAGIC %md
 # MAGIC ### Execução — T_FEATURE_SELECTION
 
 # COMMAND ----------
@@ -683,6 +779,11 @@ with mlflow.start_run(**_fs_kw, nested=True) as fs_container:
             "mode_run_id":             MODE_RUN_ID,
             "fs_container_run_id":     FS_CONTAINER_RUN_ID,
         })
+        mlflow.log_dict(
+            rules_catalog_for_logging({"rules_feature_prep": RULES_FEATURE_PREP}),
+            "rules_feature_prep_catalog.json",
+        )
+        mlflow.log_dict(build_tables_lineage_fs(), "tables_lineage.json")
 
         # ── [1] Load + filter SEG_TARGET ──────────────────────────────────
         df_raw = spark.table(DF_MODEL_FQN)
@@ -745,7 +846,10 @@ with mlflow.start_run(**_fs_kw, nested=True) as fs_container:
 
         null_profile   = [{"col": c, "nulls": int(null_counts[c]), "pct_null": null_counts[c] / n_rows_seg}
                           for c in cols_candidate]
-        drop_null_cols = {r["col"] for r in null_profile if r["pct_null"] > NULL_DROP_PCT}
+        if TOGGLES_RULES_FEATURE_PREP["PP_R04"]:
+            drop_null_cols = {r["col"] for r in null_profile if r["pct_null"] > NULL_DROP_PCT}
+        else:
+            drop_null_cols = set()
         mlflow.log_dict({"null_profile": null_profile, "drop_null_cols": sorted(drop_null_cols)},
                         "fs_stage1/null_profile.json")
 
@@ -755,8 +859,9 @@ with mlflow.start_run(**_fs_kw, nested=True) as fs_container:
                         for c in cat_present]
         high_card_cols = [r["col"] for r in cat_card_pre if r["count_distinct"] > HIGH_CARD_THRESHOLD]
 
-        for c in high_card_cols:
-            df_base = truncate_high_cardinality(df_base, c, top_n=HIGH_CARD_TOP_N, outros=OUTROS_LABEL)
+        if TOGGLES_RULES_FEATURE_PREP["PP_R05"]:
+            for c in high_card_cols:
+                df_base = truncate_high_cardinality(df_base, c, top_n=HIGH_CARD_TOP_N, outros=OUTROS_LABEL)
 
         cat_card_post = [{"col": c, "count_distinct_post": int(df_base.select(F.countDistinct(c)).collect()[0][0])}
                          for c in cat_present]
@@ -772,7 +877,10 @@ with mlflow.start_run(**_fs_kw, nested=True) as fs_container:
         # ── [5] Listas finais de features ─────────────────────────────────
         _id_cols_fs         = [ID_COL, "CD_DOC_CORRETOR", "TS_ARQ", SEG_COL, DATE_COL]
         _drop_base_fs       = _id_cols_fs + [STATUS_COL]
-        drop_constant_cols  = {r["col"] for r in cat_card_pre if r["count_distinct"] <= 1}
+        if TOGGLES_RULES_FEATURE_PREP["PP_R06"]:
+            drop_constant_cols = {r["col"] for r in cat_card_pre if r["count_distinct"] <= 1}
+        else:
+            drop_constant_cols = set()
         DROP_FEATURES_FINAL = set(_drop_base_fs) | drop_null_cols | drop_constant_cols | EXCLUIR_DE_FEATURES
 
         NUM_COLS_FINAL   = [c for c in FS_DECIMAL_COLS + FS_DIAS_COLS
@@ -1057,10 +1165,13 @@ CV_SEED   = 42
 CV_METRIC = "areaUnderPR"
 
 # Grid de hiperparâmetros
-# Listas: variam no grid. Scalar (maxIter): fixo em todos os combos.
+# Listas: variam no grid → cada combinação gera um model_id.
+# Scalar (maxIter): fixo em todos os combos.
+# Exemplo com 1 combo: maxDepth=[4], stepSize=[0.1] → d4_s01
+# Exemplo com 4 combos: maxDepth=[4,6], stepSize=[0.1,0.05] → d4_s01, d4_s005, d6_s01, d6_s005
 GBT_PARAM_GRID = {
-    "maxDepth": [4],
-    "stepSize": [0.1],
+    "maxDepth": [4],       # <<< adicionar valores para mais combos, ex: [4, 6]
+    "stepSize": [0.1],     # <<< adicionar valores para mais combos, ex: [0.1, 0.05]
     "maxIter":  100,
 }
 
@@ -1170,6 +1281,18 @@ def apply_truncation(df: DataFrame, col_name: str, top_vals: list, outros: str =
     )
 
 
+def build_tables_lineage_treino() -> dict:
+    return {
+        "stage":         "T_TREINO",
+        "ts_exec":       TS_EXEC,
+        "treino_versao": TREINO_VERSAO,
+        "mode":          MODE_CODE,
+        "inputs":        {"df_model": DF_MODEL_FQN, "df_validacao": DF_VALID_FQN},
+        "seg_target":    SEG_TARGET,
+        "feature_set":   TREINO_FEATURE_SET_KEY,
+    }
+
+
 print("✅ Helpers T_TREINO carregados")
 
 # COMMAND ----------
@@ -1266,6 +1389,8 @@ with mlflow.start_run(**_tr_kw, nested=True) as treino_container:
             "treino_num_cols":         json.dumps(treino_num_cols),
             "note_mode_c":             "todos_combos_salvos_sem_selecao_vencedor",
         })
+
+        mlflow.log_dict(build_tables_lineage_treino(), "tables_lineage.json")
 
         # Salvar top_vals_by_col como artifact (reutilizado pelo 4_INFERENCIA)
         mlflow.log_dict(top_vals_by_col, "preprocess/top_vals_by_col.json")

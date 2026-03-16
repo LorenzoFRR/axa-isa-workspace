@@ -353,79 +353,75 @@ print("✅ Input preparado")
 print("• n_rows           :", n_input)
 print("• colunas truncadas:", [c for c in top_vals_by_col if c in df_inf_prep.columns])
 
-# ── [2] Loop de scoring por model_id ─────────────────────────────────────────
-# Acumula um DataFrame long (uma linha por cotação × model_id).
-# pred_emitida NÃO é gerada aqui — thresholds calculados no 5_COMP_MODE_C.
+# ── [2] Loop de scoring por model_id — formato wide (uma linha por cotação) ───
+# Colunas por model_id: p_emitida_{model_id}, rank_global_{model_id}
+# Metadados compartilhados (mesmos para todos os modelos da execução):
+#   treino_exec_run_id, inf_versao, mode_code, seg_inferida, inference_ts
 
-df_scored_all     = None
+_base_cols = list(dict.fromkeys(
+    ID_COLS
+    + ([STATUS_COL] if STATUS_COL in df_inf_prep.columns else [])
+    + ([LABEL_COL]  if LABEL_COL  in df_inf_prep.columns else [])
+))
+df_wide           = df_inf_prep.select(*_base_cols).cache()
 score_profile_log = {}
-fold_metrics_log  = []
 
 for model_id in MODEL_IDS_USED:
     print(f"\n  → Scoring: {model_id}")
 
-    # Carrega modelo e pipeline do artifact store do treino
+    # Carregar modelo e pipeline do artifact store do treino
     gbt_model = mlflow.spark.load_model(f"runs:/{TREINO_EXEC_RUN_ID}/treino_final/{model_id}/model")
     pp_fit    = mlflow.spark.load_model(f"runs:/{TREINO_EXEC_RUN_ID}/treino_final/{model_id}/preprocess_pipeline")
 
-    # Vetorização
-    df_for_model  = df_inf_prep.select(*FEATURE_COLS_USED).cache()
-    df_vectorized = pp_fit.transform(df_for_model).select("features_vec").cache()
+    # Vetorização — ID_COL incluído para join após scoring
+    df_for_model  = df_inf_prep.select(ID_COL, *FEATURE_COLS_USED).cache()
+    df_vectorized = pp_fit.transform(df_for_model).select(ID_COL, "features_vec").cache()
 
-    # Scoring
-    df_pred  = gbt_model.transform(df_vectorized)
-    p1_col   = vector_to_array(F.col("probability")).getItem(1).cast("double")
-    df_scores = df_pred.select(p1_col.alias("p_emitida"))
+    # Scoring + extração de p_emitida e rank global
+    p_col = f"p_emitida_{model_id}"
+    r_col = f"rank_global_{model_id}"
 
-    # Rank global por score desc (dentro do model_id)
-    w_rank = Window.orderBy(F.desc("p_emitida"))
-    df_scores = df_scores.withColumn("rank_global", F.row_number().over(w_rank))
-
-    # Reattach IDs e payload original via índice de posição (zipWithIndex → join)
-    # Alternativa mais robusta: usar monotonically_increasing_id nas duas DFs antes do join
-    df_inf_with_idx   = df_inf_prep.withColumn("_row_idx", F.monotonically_increasing_id())
-    df_scores_with_idx = df_scores.withColumn("_row_idx", F.monotonically_increasing_id())
-    df_joined = df_inf_with_idx.join(df_scores_with_idx, on="_row_idx", how="inner").drop("_row_idx")
-
-    # Adicionar metadados do modelo
-    df_model_scored = (
-        df_joined
-        .withColumn("model_id",          F.lit(model_id))
-        .withColumn("treino_exec_run_id", F.lit(TREINO_EXEC_RUN_ID))
-        .withColumn("inf_versao",         F.lit(INF_VERSAO))
-        .withColumn("mode_code",          F.lit(MODE_CODE))
-        .withColumn("seg_inferida",       F.lit(SEG_TARGET))
-        .withColumn("inference_ts",       F.lit(TS_EXEC))
-        .drop(*FEATURE_COLS_USED)   # remover features do output — payload de IDs + scores é suficiente
+    df_pred = gbt_model.transform(df_vectorized)
+    df_model_scores = (
+        df_pred
+        .withColumn(p_col, vector_to_array(F.col("probability")).getItem(1).cast("double"))
+        .withColumn(r_col, F.row_number().over(Window.orderBy(F.desc(p_col))))
+        .select(ID_COL, p_col, r_col)
     )
 
-    # Acumular
-    if df_scored_all is None:
-        df_scored_all = df_model_scored
-    else:
-        df_scored_all = df_scored_all.union(df_model_scored)
+    # Join lateral — mantém uma linha por cotação
+    df_wide = df_wide.join(df_model_scores, on=ID_COL, how="left")
 
     # Perfil de score por model_id
-    n_scored    = int(df_model_scored.count())
-    n_null_p    = int(df_model_scored.filter(F.col("p_emitida").isNull()).count())
-    score_prof  = profile_score(df_model_scored, "p_emitida")
+    n_scored   = int(df_model_scores.count())
+    n_null_p   = int(df_model_scores.filter(F.col(p_col).isNull()).count())
+    score_prof = profile_score(df_model_scores, p_col)
     score_profile_log[model_id] = {**score_prof, "n_null_p_emitida": n_null_p}
-    fold_metrics_log.append({"model_id": model_id, "n_rows": n_scored, "n_null_p_emitida": n_null_p})
 
     mlflow.log_metrics({
-        f"n_rows_per_model_{model_id}":   n_scored,
-        f"n_null_p_emitida_{model_id}":   n_null_p,
+        f"n_rows_per_model_{model_id}": n_scored,
+        f"n_null_p_emitida_{model_id}": n_null_p,
     })
 
     df_for_model.unpersist()
     df_vectorized.unpersist()
     print(f"     n_rows={n_scored}  n_null_p={n_null_p}  score_mean={score_prof.get('mean', 'N/A'):.4f}")
 
-# ── [3] Logs e métricas agregadas ─────────────────────────────────────────────
-df_scored_all = df_scored_all.cache()
-n_output      = int(df_scored_all.count())
+# ── Metadados compartilhados da execução ──────────────────────────────────────
+df_wide = (
+    df_wide
+    .withColumn("treino_exec_run_id", F.lit(TREINO_EXEC_RUN_ID))
+    .withColumn("inf_versao",         F.lit(INF_VERSAO))
+    .withColumn("mode_code",          F.lit(MODE_CODE))
+    .withColumn("seg_inferida",       F.lit(SEG_TARGET))
+    .withColumn("inference_ts",       F.lit(TS_EXEC))
+)
 
-mlflow.log_dict(profile_basic(df_scored_all, "output_long_format"), "profiling_output.json")
+# ── [3] Logs e métricas agregadas ─────────────────────────────────────────────
+df_wide  = df_wide.cache()
+n_output = int(df_wide.count())
+
+mlflow.log_dict(profile_basic(df_wide, "output_wide_format"), "profiling_output.json")
 mlflow.log_dict(score_profile_log, "score_profile_per_model.json")
 mlflow.log_metrics({
     "n_rows_output":   n_output,
@@ -433,9 +429,16 @@ mlflow.log_metrics({
 })
 
 print("\n✅ Scoring concluído")
-print("• n_rows output (long format):", n_output)
+print("• n_rows output (wide format):", n_output)
 print("• modelos:", MODEL_IDS_USED)
-df_scored_all.orderBy("model_id", F.asc("rank_global")).display(10)
+_show_cols = (
+    [ID_COL]
+    + [f"p_emitida_{m}"   for m in MODEL_IDS_USED]
+    + [f"rank_global_{m}" for m in MODEL_IDS_USED]
+)
+df_wide.select(*[c for c in _show_cols if c in df_wide.columns]).orderBy(
+    F.asc(f"rank_global_{MODEL_IDS_USED[0]}")
+).display(10)
 
 # COMMAND ----------
 
@@ -444,14 +447,14 @@ df_scored_all.orderBy("model_id", F.asc("rank_global")).display(10)
 
 # COMMAND ----------
 
-df_scored_all.write.format("delta").mode(WRITE_MODE).saveAsTable(OUTPUT_TABLE_FQN)
+df_wide.write.format("delta").mode(WRITE_MODE).saveAsTable(OUTPUT_TABLE_FQN)
 mlflow.log_metric("output_saved", 1)
 
 print("✅ Output salvo:", OUTPUT_TABLE_FQN)
 
 df_seg.unpersist()
 df_inf_prep.unpersist()
-df_scored_all.unpersist()
+df_wide.unpersist()
 
 while mlflow.active_run() is not None:
     mlflow.end_run()
@@ -459,5 +462,6 @@ while mlflow.active_run() is not None:
 print("✅ Runs encerradas")
 print("\n• output table     :", OUTPUT_TABLE_FQN)
 print("• modelos inferidos:", MODEL_IDS_USED)
+print("• colunas de score :", [f"p_emitida_{m}" for m in MODEL_IDS_USED])
 print("\n⚠️  Anotar OUTPUT_TABLE_FQN para uso no 5_COMP_MODE_C:")
 print(f"    INFERENCIA_TABLE_FQN = \"{OUTPUT_TABLE_FQN}\"")
