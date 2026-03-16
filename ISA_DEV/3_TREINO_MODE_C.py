@@ -18,10 +18,10 @@ MODE_CODE       = "C"
 MODE_NAME       = f"T_MODE_{MODE_CODE}"
 
 PR_RUN_ID_OVERRIDE        = "21f1184afb354159b325ad87bca3c50d"
-MODE_RUN_ID_OVERRIDE      = ""
-PRE_PROC_RUN_ID_OVERRIDE  = ""
-FS_RUN_ID_OVERRIDE        = ""
-TREINO_RUN_ID_OVERRIDE    = ""
+MODE_RUN_ID_OVERRIDE      = "71c8526241ab41ad88bd585679d1e9e5"
+PRE_PROC_RUN_ID_OVERRIDE  = "0c3c06a104264ba2aee0a8a2ec032edd"
+FS_RUN_ID_OVERRIDE        = "0ae2a9f6d8b240fdb835858a36592a66"
+TREINO_RUN_ID_OVERRIDE    = "0c43caa200884d9c89ddb0ca0469c65a"
 
 STEP_PRE_PROC_NAME          = "T_PRE_PROC_MODEL"
 STEP_FEATURE_SELECTION_NAME = "T_FEATURE_SELECTION"
@@ -124,6 +124,10 @@ FEATURE_CANDIDATES = {
     "HR_M3_detalhe":                             False,   # decimal(17,6)
 }
 
+
+'VL_PREMIO_ALVO', 'VL_ENDOSSO_PREMIO_TOTAL'
+
+
 FS_METHODS_CONFIG = {
     "lr_l1": {"maxIter": 100, "regParam": 0.01, "elasticNetParam": 1.0},
     "rf":    {"numTrees": 200, "maxDepth": 8},
@@ -174,7 +178,6 @@ import json
 from typing import Callable, Dict, List, Optional, Tuple
 
 import mlflow
-from mlflow.tracking import MlflowClient
 
 from pyspark.sql import DataFrame
 from pyspark.sql import functions as F
@@ -830,18 +833,6 @@ print("✅ Helpers FS carregados")
 # COMMAND ----------
 
 # MAGIC %md
-# MAGIC ### Regras de pré-processamento de features — T_FEATURE_SELECTION
-
-# COMMAND ----------
-
-# TOGGLES_RULES_FEATURE_PREP e RULES_FEATURE_PREP definidos em T_PRE_PROC_MODEL.
-# PP_R04/PP_R05/PP_R06 são executadas sobre df_model antes de ser salvo.
-# Esta etapa carrega dados já limpos — consultar artifacts preproc_feature/ do run T_PRE_PROC_MODEL.
-print("ℹ️  PP_R04/PP_R05/PP_R06 aplicadas em T_PRE_PROC_MODEL (ver preproc_feature/)")
-
-# COMMAND ----------
-
-# MAGIC %md
 # MAGIC ### Execução — T_FEATURE_SELECTION
 
 # COMMAND ----------
@@ -1254,7 +1245,7 @@ USE_CLASS_WEIGHT       = "auto"   # "auto" | True | False
 CLASS_WEIGHT_THRESHOLD = 0.30
 
 # CV + grid
-CV_FOLDS  = 2
+CV_FOLDS  = 5
 CV_SEED   = 42
 CV_METRIC = "areaUnderPR"
 
@@ -1264,10 +1255,17 @@ CV_METRIC = "areaUnderPR"
 # Exemplo com 1 combo: maxDepth=[4], stepSize=[0.1] → d4_s01
 # Exemplo com 4 combos: maxDepth=[4,6], stepSize=[0.1,0.05] → d4_s01, d4_s005, d6_s01, d6_s005
 GBT_PARAM_GRID = {
-    "maxDepth": [4],       # <<< adicionar valores para mais combos, ex: [4, 6]
-    "stepSize": [0.1],     # <<< adicionar valores para mais combos, ex: [0.1, 0.05]
+    "maxDepth": [4, 6],       # <<< adicionar valores para mais combos, ex: [4, 6]
+    "stepSize": [0.05, 0.1],     # <<< adicionar valores para mais combos, ex: [0.1, 0.05]
     "maxIter":  100,
 }
+
+# Eval — critério de seleção de τ na curva PR
+# "max_f1"              → τ que maximiza F1 (equilíbrio precision/recall)
+# "max_f2"              → τ que maximiza F2 (peso duplo no recall)
+# "precision_ge_target" → maior recall com precision >= EVAL_PRECISION_TARGET
+EVAL_CRITERION        = "max_f1"
+EVAL_PRECISION_TARGET = 0.25   # usado apenas quando EVAL_CRITERION = "precision_ge_target"
 
 ID_COLS            = [ID_COL, "CD_DOC_CORRETOR", "TS_ARQ", SEG_COL, DATE_COL]
 DROP_FROM_FEATURES = ID_COLS + [STATUS_COL]
@@ -1361,6 +1359,121 @@ def build_tables_lineage_treino() -> dict:
 
 
 print("✅ Helpers T_TREINO carregados")
+
+# COMMAND ----------
+
+# MAGIC %md
+# MAGIC ### Helpers — T_EVAL
+
+# COMMAND ----------
+
+def compute_pr_curve(pdf: pd.DataFrame, label_col: str = "label", score_col: str = "p1") -> pd.DataFrame:
+    """
+    Varre thresholds de 0.01 a 0.99 e calcula precision, recall, F1 e F2 para cada ponto.
+    Retorna DataFrame pandas com colunas: threshold, tp, fp, fn, tn, precision, recall, f1, f2.
+    """
+    y     = pdf[label_col].values
+    score = pdf[score_col].values
+    rows  = []
+    for t in [round(v / 100, 2) for v in range(1, 100)]:
+        yhat      = (score >= t).astype(int)
+        tp        = int(((y == 1) & (yhat == 1)).sum())
+        fp        = int(((y == 0) & (yhat == 1)).sum())
+        fn        = int(((y == 1) & (yhat == 0)).sum())
+        tn        = int(((y == 0) & (yhat == 0)).sum())
+        precision = tp / (tp + fp) if (tp + fp) > 0 else None
+        recall    = tp / (tp + fn) if (tp + fn) > 0 else None
+        f1        = (2 * precision * recall / (precision + recall))     if (precision and recall) else None
+        f2        = (5 * precision * recall / (4 * precision + recall)) if (precision and recall) else None
+        rows.append({"threshold": t, "tp": tp, "fp": fp, "fn": fn, "tn": tn,
+                     "precision": precision, "recall": recall, "f1": f1, "f2": f2})
+    return pd.DataFrame(rows)
+
+
+def select_threshold(pdf_curve: pd.DataFrame, criterion: str, precision_target: float = 0.25) -> dict:
+    """Seleciona a linha da curva correspondente ao τ ótimo segundo o critério configurado."""
+    df = pdf_curve.dropna(subset=["precision", "recall"])
+    if criterion == "max_f1":
+        row = df.loc[df["f1"].idxmax()]
+    elif criterion == "max_f2":
+        row = df.loc[df["f2"].idxmax()]
+    elif criterion == "precision_ge_target":
+        df_ok = df[df["precision"] >= precision_target]
+        if df_ok.empty:
+            raise ValueError(f"Nenhum threshold satisfaz precision >= {precision_target}")
+        row = df_ok.loc[df_ok["recall"].idxmax()]
+    else:
+        raise ValueError(f"EVAL_CRITERION inválido: '{criterion}'. Use 'max_f1', 'max_f2' ou 'precision_ge_target'.")
+    return row.to_dict()
+
+
+def log_figure(fig, artifact_path: str) -> None:
+    """Salva figura matplotlib e loga como artifact MLflow."""
+    with tempfile.TemporaryDirectory() as td:
+        fname  = os.path.basename(artifact_path)
+        folder = os.path.dirname(artifact_path) if "/" in artifact_path else None
+        fp     = os.path.join(td, fname)
+        fig.savefig(fp, dpi=120, bbox_inches="tight")
+        mlflow.log_artifact(fp, artifact_path=folder)
+    plt.close(fig)
+
+
+def plot_pr_curve(pdf_curve: pd.DataFrame, tau_row: dict, baseline: float, model_id: str):
+    """Curva PR com ponto τ marcado e linha de baseline (modelo aleatório)."""
+    df  = pdf_curve.dropna(subset=["precision", "recall"]).sort_values("recall")
+    fig, ax = plt.subplots(figsize=(7, 5))
+    ax.plot(df["recall"], df["precision"], color="steelblue", lw=2, label="Modelo")
+    ax.axhline(baseline, color="gray", linestyle="--", lw=1.2,
+               label=f"Baseline aleatório ({baseline:.3f})")
+    ax.scatter([tau_row["recall"]], [tau_row["precision"]],
+               color="crimson", zorder=5, s=80,
+               label=f"τ={tau_row['threshold']:.2f}  P={tau_row['precision']:.3f}  R={tau_row['recall']:.3f}")
+    ax.set_xlabel("Recall");  ax.set_ylabel("Precision")
+    ax.set_title(f"Curva PR — {model_id}")
+    ax.set_xlim(0, 1);  ax.set_ylim(0, 1)
+    ax.legend(fontsize=9)
+    fig.tight_layout()
+    return fig
+
+
+def plot_threshold_metrics(pdf_curve: pd.DataFrame, tau_row: dict, model_id: str):
+    """Precision, Recall e F1 em função de τ, com linha vertical no τ escolhido."""
+    df  = pdf_curve.dropna(subset=["precision", "recall"])
+    fig, ax = plt.subplots(figsize=(8, 5))
+    ax.plot(df["threshold"], df["precision"], label="Precision", color="steelblue",   lw=2)
+    ax.plot(df["threshold"], df["recall"],    label="Recall",    color="darkorange",  lw=2)
+    ax.plot(df["threshold"], df["f1"],        label="F1",        color="seagreen",    lw=2)
+    ax.axvline(tau_row["threshold"], color="crimson", linestyle="--", lw=1.5,
+               label=f"τ escolhido = {tau_row['threshold']:.2f}")
+    ax.set_xlabel("Threshold (τ)");  ax.set_ylabel("Score")
+    ax.set_title(f"Métricas por threshold — {model_id}")
+    ax.set_xlim(0, 1);  ax.set_ylim(0, 1)
+    ax.legend(fontsize=9)
+    fig.tight_layout()
+    return fig
+
+
+def plot_confusion_matrix(tau_row: dict, model_id: str):
+    """Heatmap da confusion matrix com valores absolutos."""
+    cm     = np.array([[tau_row["tn"], tau_row["fp"]],
+                       [tau_row["fn"], tau_row["tp"]]])
+    labels = [["TN", "FP"], ["FN", "TP"]]
+    fig, ax = plt.subplots(figsize=(5, 4))
+    im = ax.imshow(cm, cmap="Blues")
+    for i in range(2):
+        for j in range(2):
+            ax.text(j, i, f"{labels[i][j]}\n{cm[i, j]}",
+                    ha="center", va="center", fontsize=13,
+                    color="white" if cm[i, j] > cm.max() * 0.6 else "black")
+    ax.set_xticks([0, 1]);  ax.set_xticklabels(["Pred 0 (Perdida)", "Pred 1 (Emitida)"])
+    ax.set_yticks([0, 1]);  ax.set_yticklabels(["Real 0 (Perdida)", "Real 1 (Emitida)"])
+    ax.set_title(f"Confusion Matrix — {model_id}  (τ={tau_row['threshold']:.2f})")
+    fig.colorbar(im, ax=ax)
+    fig.tight_layout()
+    return fig
+
+
+print("✅ Helpers T_EVAL carregados")
 
 # COMMAND ----------
 
@@ -1570,8 +1683,98 @@ with mlflow.start_run(**_tr_kw, nested=True) as treino_container:
         mlflow.log_dict(list(TRAINED_MODELS.values()), "cv/trained_models_registry.json")
         df_model_ml.unpersist()
 
-print("\n✅ T_TREINO ok")
+        # ── [5] T_EVAL — avaliação no conjunto de validação ───────────────
+        df_eval = spark.table(DF_VALID_FQN).filter(F.col(SEG_COL) == F.lit(SEG_TARGET))
+        for c, dtype in df_eval.dtypes:
+            if dtype == "string":
+                df_eval = df_eval.withColumn(
+                    c, F.when(F.length(F.trim(F.col(c))) == 0, F.lit(None)).otherwise(F.col(c))
+                )
+        for c in treino_num_cols:
+            if c in df_eval.columns:
+                df_eval = df_eval.withColumn(c, F.col(c).cast("double"))
+        df_eval  = df_eval.cache()
+        n_eval   = int(df_eval.count())
+        baseline = float(df_eval.agg(F.avg(F.col(LABEL_COL).cast("double"))).collect()[0][0])
+
+        eval_results    = {}
+        eval_pdf_curves = {}
+        eval_figs       = {}
+
+        for model_id in model_id_list:
+            print(f"\n  [EVAL] → {model_id}")
+
+            pp_uri    = f"runs:/{TREINO_EXEC_RUN_ID}/treino_final/{model_id}/preprocess_pipeline"
+            model_uri = f"runs:/{TREINO_EXEC_RUN_ID}/treino_final/{model_id}/model"
+
+            pp_loaded    = mlflow.spark.load_model(pp_uri)
+            model_loaded = mlflow.spark.load_model(model_uri)
+
+            df_vec  = pp_loaded.transform(df_eval.select(LABEL_COL, *TREINO_FEATURE_COLS))
+            df_pred = model_loaded.transform(df_vec)
+
+            p1_col     = vector_to_array(F.col("probability")).getItem(1).cast("double")
+            pdf_scores = (df_pred
+                          .select(F.col(LABEL_COL).cast("int").alias("label"), p1_col.alias("p1"))
+                          .toPandas())
+
+            pdf_curve = compute_pr_curve(pdf_scores)
+            tau_row   = select_threshold(pdf_curve, EVAL_CRITERION, EVAL_PRECISION_TARGET)
+
+            eval_results[model_id] = {
+                "model_id":  model_id,
+                "criterion": EVAL_CRITERION,
+                "threshold": tau_row["threshold"],
+                "precision": round(tau_row["precision"], 4),
+                "recall":    round(tau_row["recall"],    4),
+                "f1":        round(tau_row["f1"],        4),
+                "f2":        round(tau_row["f2"],        4),
+                "tp": tau_row["tp"], "fp": tau_row["fp"],
+                "fn": tau_row["fn"], "tn": tau_row["tn"],
+                "baseline": round(baseline, 4),
+                "n_eval":   n_eval,
+            }
+            eval_pdf_curves[model_id] = pdf_curve
+            eval_figs[model_id] = {
+                "pr_curve":          plot_pr_curve(pdf_curve, tau_row, baseline, model_id),
+                "threshold_metrics": plot_threshold_metrics(pdf_curve, tau_row, model_id),
+                "confusion_matrix":  plot_confusion_matrix(tau_row, model_id),
+            }
+
+            print(f"     τ={tau_row['threshold']:.2f}  P={tau_row['precision']:.3f}  "
+                  f"R={tau_row['recall']:.3f}  F1={tau_row['f1']:.3f}  F2={tau_row['f2']:.3f}")
+
+        df_eval.unpersist()
+
+        mlflow.log_param("eval_criterion",        EVAL_CRITERION)
+        mlflow.log_param("eval_precision_target", EVAL_PRECISION_TARGET)
+        mlflow.log_metric("eval_n_valid", float(n_eval))
+        mlflow.log_metric("eval_baseline", round(baseline, 4))
+
+        for model_id, r in eval_results.items():
+            prefix = f"eval_{model_id}"
+            mlflow.log_metrics({
+                f"{prefix}_threshold": r["threshold"],
+                f"{prefix}_precision": r["precision"],
+                f"{prefix}_recall":    r["recall"],
+                f"{prefix}_f1":        r["f1"],
+                f"{prefix}_f2":        r["f2"],
+                f"{prefix}_tp":        float(r["tp"]),
+                f"{prefix}_fp":        float(r["fp"]),
+                f"{prefix}_fn":        float(r["fn"]),
+                f"{prefix}_tn":        float(r["tn"]),
+            })
+            log_pandas_csv(eval_pdf_curves[model_id], f"eval/{model_id}/pr_curve.csv")
+            mlflow.log_dict(r, f"eval/{model_id}/eval_summary.json")
+            log_figure(eval_figs[model_id]["pr_curve"],          f"eval/{model_id}/pr_curve.png")
+            log_figure(eval_figs[model_id]["threshold_metrics"], f"eval/{model_id}/threshold_metrics.png")
+            log_figure(eval_figs[model_id]["confusion_matrix"],  f"eval/{model_id}/confusion_matrix.png")
+
+print("\n✅ T_TREINO + T_EVAL ok")
 print("• TREINO_EXEC_RUN_ID :", TREINO_EXEC_RUN_ID)
 print("• Modelos treinados  :", list(TRAINED_MODELS.keys()))
+print("\nEVAL:")
+for mid, r in eval_results.items():
+    print(f"• {mid}: τ={r['threshold']}  P={r['precision']}  R={r['recall']}  F1={r['f1']}  F2={r['f2']}")
 print("\n⚠️  Anotar TREINO_EXEC_RUN_ID para uso no 4_INFERENCIA_MODE_C e 5_COMP_MODE_C:")
 print(f"    TREINO_EXEC_RUN_ID = \"{TREINO_EXEC_RUN_ID}\"")

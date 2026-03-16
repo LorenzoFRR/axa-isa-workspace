@@ -104,17 +104,13 @@ git push
         - rank_global_model_id
         - treino_exec_model_id_run_id (caso esta coluna for específica por model_id)
       Ou seja, minha ideia é ter as colunas repetidas, mantendo cada cotação com apenas uma linha. Assim poderei fazer as análises posteriores diretamente da mesma tabela.
+    - [ ] Ajustar 3_TREINO_MODE_C pra não fechar a run antes da etapa de EVAL (deixar tudo na mesma run)
 
 
   # 4_INFERENCIA
   - [ ] Ajustar nome tabela de inferência criada (pode ser _mode_code_segmentacao_timestamp) 🔴
-  - [ ] Verificar se tabela de inferência contempla os demais modelos
-  - [ ] Ajustar nome runs 🔴
-    - Remover _MODE_ (coluna mode_code já é logada)
-  - [ ] Entender Listas de Tipo (MODE_C) 🔴
-    - Qual o impacto desta lista e como faço para defini-la de forma mais robusta?
-    - Ao invés de redefinir, reutilizar de 3_TREINO_MODE_C
-  - [ ] MODEL_IDS ficou só com um model. Acho que o problema é na etapa de 3_TREINO_MODE_C. Verificar 🔴
+  - [ ] Verificar se tabela de inferência contempla os demais modelos do grid 🔴
+  - [ ] Ajustar nome runs - T_INF_timestamp (MODE, SEG e VERSAO são logadas como tags/params) 🔴
   
   # 5_COMP
   - [ ] Desenvolver e testar código 🔴
