@@ -241,7 +241,6 @@ Se K_τ >> capacidade: o modelo está selecionando mais cotações do que o time
 Se K_τ << capacidade: o modelo está sendo mais restritivo do que necessário — o time poderia atender mais, mas o threshold descarta cotações viáveis.
 Isso não é uma métrica de qualidade do modelo, mas de viabilidade operacional do ponto de operação.
 
-
 2. Confusion matrix como função de K
 
 A confusion matrix (TP, FP, FN, TN) calculada em τ=0.60 é, na prática, a confusion matrix em K=K_τ. Se você varia K (ordena por score e toma os top-K), a confusion matrix varia junto — e você pode plotá-la como curva:

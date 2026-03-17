@@ -45,20 +45,21 @@ git push
 
 # Direcionamentos Gerais
 - [STDBY] Fazer ingestão completa para desenvolvimento 
+- [ ] Ver com Kimura como fica atualização dos dados de corretor quando tivermos pipeline de produção 🔴
+  - Contudo, hoje, no pipeline de treino com dados de 2025, não é problemático
 
 ## Definição direcionamento 16/03
 - [STDBY] Criar modelos abrindo além de SEG_NOVO/RENOVACAO/MANUAL/DIGITAL
-- [ ] Treinar modelos com novas abordagens
-  - [ ] Utilizar dados de corretor atualizados 🔵
+- [ ] Treinar modelos com novas abordagens 🔴
+  - [ ] Utilizar dados de corretor atualizados
     - HR, QTDs
     - HR somente
-  - [ ] Utilizar classificação, removendo HR, QTDs 🔵
+  - [ ] Utilizar classificação, removendo HR, QTDs
   - [STDBY] Utilizar clusterização
-  - [ ] Reorganizar/Enxugar NOTAS_MODELAGEM.md / PLANO_MODELAGEM.md 🔴
-    - A ideia é consultar o que foi realizado (no caso em MODE_C) e definir implementações que podem ser desenvolvidas (pegar como exemplo a análise de K e threshold e plot de confusion matrix no K, no final de NOTAS_MODELAGEM.d)
   - [ ] Iniciar análise capacidade operacional para cruzamento com resultados dos modelos 🟠
 
 ####################################################################
+- [ ] Limpar catalogo 🔴
 
 # 1_PRE_PROC
   - [STDBY] Implementar lógica: se não foi atualizada regra pra uma tabela e ela já existe, então não recriá-la
@@ -80,7 +81,7 @@ git push
   # 3_TREINO
 
     # ETAPA PRE_PROC_MODEL
-    - [ ] Ajustar json pra acomodar 'rules_feature_prep' 🟠
+    - [ ] Ajustar json pra acomodar 'rules_feature_prep' 🔴
 
     # ETAPA FEATURE SELECTION
     - [STDBY] Implementar partição exclusiva ou CV na etapa de FS - explorar aspecto de variância com etapa de treinamento
@@ -91,7 +92,7 @@ git push
       - [STDBY] SHAP // Fornece sentido de relação (positivo, negativo)
       - [STDBY] Permutation Importance
       - [STDBY] RFE - Recursive Feature Elimination
-    - [ ] Ver FEATURE_CANDIDATES que não estão contempladas na tabela 🟠
+    - [ ] Ver FEATURE_CANDIDATES que não estão contempladas na tabela 🔴
     - [ ] Ver se as regras de pre-processamento foram aplicadas e são passadas à etapa de FS (DS_SISTEMA, por exemplo, tá entrando em FS) 🔴
 
     # ETAPA TREINO
@@ -100,18 +101,15 @@ git push
     - [STDBY] Entender como trabalhar com calibração do score e influência decisão de threshold
       - Platt Scaling, Isotonic Regression
 
-    - [ ] Avaliar anomalias em EVAL 🟠
-    - [ ] Verificar se o TREINO contempla análise de overfitting 🟠
+    - [ ] Avaliar anomalias em EVAL 🔴
 
   # 4_INFERENCIA
-  - [ ] Adicionar lineage 🔴
-  - [ ] Ajustar nome tabela de inferência criada (pode ser _mode_code_segmentacao_timestamp) 🔴
-  - [ ] Verificar se tabela de inferência contempla os demais modelos do grid 🔴
-  - [ ] Ajustar nome runs - T_INF_timestamp (MODE, SEG e VERSAO são logadas como tags/params) 🔴
-  
+  - OK
+
   # 5_COMP
-  - [ ] Adicionar lineage 🔴
-  - [ ] Desenvolver e testar código 🔴
+  - OK
 
   # 6_REPORT
   - [ ] Referenciar run_id de modelos e gerar comparações
+
+

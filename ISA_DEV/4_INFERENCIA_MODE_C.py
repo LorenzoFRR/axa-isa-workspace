@@ -15,7 +15,7 @@ EXPERIMENT_NAME = "/Workspace/Users/psw.service@pswdigital.com.br/TESTE_ML_NOVO/
 
 PR_INF_NAME = "T_PR_INFERENCIA"
 MODE_CODE   = "C"
-INF_VERSAO  = "V1"
+INF_VERSAO  = "V9.0.0"
 VERSAO_REF  = INF_VERSAO
 
 TS_EXEC    = datetime.now(ZoneInfo("America/Sao_Paulo")).strftime("%Y%m%d_%H%M%S")
@@ -25,13 +25,13 @@ def run_name_vts(base: str) -> str:
     return f"{base}_{TS_EXEC}"
 
 # Override: preencha para reutilizar container PR existente
-PR_INF_RUN_ID_OVERRIDE = ""
+PR_INF_RUN_ID_OVERRIDE = "e7af2dc5cb8b45c194656889f4b28fd2"
 
 # =========================
 # REFERÊNCIA AO TREINO
 # =========================
 # run_id do exec run T_TREINO (run_role=exec, step=TREINO) — impresso no final do 3_TREINO_MODE_C
-TREINO_EXEC_RUN_ID = ""   # <<< OBRIGATÓRIO
+TREINO_EXEC_RUN_ID = "a53ffb7f8ad647cd97dd704cbaf0b50f"   # <<< OBRIGATÓRIO
 
 # =========================
 # MODELOS A INFERIR
@@ -60,34 +60,13 @@ ID_COLS = [ID_COL, "CD_DOC_CORRETOR", "TS_ARQ", SEG_COL, DATE_COL]
 # Se vazio ([]), será lido automaticamente do MLflow.
 TREINO_FEATURE_COLS = []   # <<< AJUSTE ou deixar vazio para ler do MLflow
 
-# Listas de tipo — mesmas do 3_TREINO_MODE_C
-FS_CAT_COLS = [
-    "INTERMENDIARIO_PERFIL",
-    "DS_PRODUTO_NOME",
-    "DS_SISTEMA",
-    "CD_FILIAL_RESPONSAVEL_COTACAO",
-    "DS_ATIVIDADE_SEGURADO",
-    "DS_GRUPO_CORRETOR_SEGMENTO",
-]
-FS_DECIMAL_COLS = [
-    "VL_PREMIO_ALVO", "VL_PREMIO_LIQUIDO", "VL_PRE_TOTAL",
-    "VL_ENDOSSO_PREMIO_TOTAL", "VL_GWP_CORRETOR_RESUMO",
-]
-FS_DIAS_COLS = [
-    "DIAS_INICIO_VIGENCIA", "DIAS_VALIDADE", "DIAS_ANALISE_SUBSCRICAO",
-    "DIAS_FIM_ANALISE_SUBSCRICAO", "DIAS_COTACAO", "DIAS_ULTIMA_ATUALIZACAO",
-]
-
-# Parâmetros de truncagem — mesmos do 3_TREINO_MODE_C
-HIGH_CARD_THRESHOLD = 15
-HIGH_CARD_TOP_N     = 10
-OUTROS_LABEL        = "OUTROS"
+OUTROS_LABEL = "OUTROS"   # constante usada na truncagem; deve coincidir com o treino
 
 # =========================
 # INPUT / OUTPUT
 # =========================
 # df_validacao gerado pelo 3_TREINO_MODE_C (logado como param 'df_validacao_fqn')
-INPUT_TABLE_FQN = "gold.cotacao_validacao_..."   # <<< AJUSTE
+INPUT_TABLE_FQN = "gold.cotacao_validacao_20260316_203342_656cd854"   # <<< AJUSTE
 
 OUT_SCHEMA       = "gold"
 OUTPUT_TABLE_FQN = f"{OUT_SCHEMA}.cotacao_inferencia_mode_{MODE_CODE.lower()}_{SEG_SLUG}_{TS_EXEC}"
@@ -225,17 +204,15 @@ else:
     FEATURE_COLS_USED = json.loads(treino_run_data.params["feature_cols"])
     print("• feature_cols    : lido do MLflow →", FEATURE_COLS_USED)
 
-if "treino_cat_cols" in treino_run_data.params and "treino_num_cols" in treino_run_data.params:
-    treino_cat_cols = json.loads(treino_run_data.params["treino_cat_cols"])
-    treino_num_cols = json.loads(treino_run_data.params["treino_num_cols"])
-    print("• treino_cat_cols : lido do MLflow →", treino_cat_cols)
-    print("• treino_num_cols : lido do MLflow →", treino_num_cols)
-else:
-    # Fallback para runs treinadas antes desta versão
-    treino_cat_cols = [c for c in FEATURE_COLS_USED if c in FS_CAT_COLS]
-    treino_num_cols = [c for c in FEATURE_COLS_USED if c in FS_DECIMAL_COLS + FS_DIAS_COLS]
-    print("• treino_cat_cols : derivado localmente (fallback) →", treino_cat_cols)
-    print("• treino_num_cols : derivado localmente (fallback) →", treino_num_cols)
+for _p in ("treino_cat_cols", "treino_num_cols"):
+    if _p not in treino_run_data.params:
+        raise ValueError(f"❌ Param '{_p}' não encontrado na run {TREINO_EXEC_RUN_ID}.")
+
+treino_cat_cols = json.loads(treino_run_data.params["treino_cat_cols"])
+treino_num_cols = json.loads(treino_run_data.params["treino_num_cols"])
+
+print("• treino_cat_cols : lido do MLflow →", treino_cat_cols)
+print("• treino_num_cols : lido do MLflow →", treino_num_cols)
 
 # COMMAND ----------
 
@@ -273,8 +250,6 @@ mlflow.log_params({
     "input_table_fqn":     INPUT_TABLE_FQN,
     "output_table_fqn":    OUTPUT_TABLE_FQN,
     "feature_cols":        json.dumps(FEATURE_COLS_USED),
-    "high_card_threshold": HIGH_CARD_THRESHOLD,
-    "high_card_top_n":     HIGH_CARD_TOP_N,
     "outros_label":        OUTROS_LABEL,
 })
 
@@ -359,12 +334,8 @@ print("• colunas truncadas:", [c for c in top_vals_by_col if c in df_inf_prep.
 # Metadados compartilhados (mesmos para todos os modelos da execução):
 #   treino_exec_run_id, inf_versao, mode_code, seg_inferida, inference_ts
 
-_base_cols = list(dict.fromkeys(
-    ID_COLS
-    + ([STATUS_COL] if STATUS_COL in df_inf_prep.columns else [])
-    + ([LABEL_COL]  if LABEL_COL  in df_inf_prep.columns else [])
-))
-df_wide           = df_inf_prep.select(*_base_cols).cache()
+# df_wide parte do input completo — os scores são adicionados via join
+df_wide           = df_seg
 score_profile_log = {}
 
 for model_id in MODEL_IDS_USED:
