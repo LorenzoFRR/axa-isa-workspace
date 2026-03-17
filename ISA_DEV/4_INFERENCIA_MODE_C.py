@@ -49,6 +49,7 @@ ID_COL     = "CD_NUMERO_COTACAO_AXA"
 SEG_COL    = "SEG"
 DATE_COL   = "DATA_COTACAO"
 SEG_TARGET = "SEGURO_NOVO_MANUAL"   # <<< AJUSTE
+SEG_SLUG   = SEG_TARGET.lower()     # ex: "seguro_novo_manual"
 
 ID_COLS = [ID_COL, "CD_DOC_CORRETOR", "TS_ARQ", SEG_COL, DATE_COL]
 
@@ -89,7 +90,7 @@ OUTROS_LABEL        = "OUTROS"
 INPUT_TABLE_FQN = "gold.cotacao_validacao_..."   # <<< AJUSTE
 
 OUT_SCHEMA       = "gold"
-OUTPUT_TABLE_FQN = f"{OUT_SCHEMA}.cotacao_inferencia_mode_c_{TS_EXEC}"
+OUTPUT_TABLE_FQN = f"{OUT_SCHEMA}.cotacao_inferencia_mode_{MODE_CODE.lower()}_{SEG_SLUG}_{TS_EXEC}"
 WRITE_MODE       = "overwrite"
 
 print("✅ CONFIG INFERÊNCIA MODE_C carregada")
@@ -252,7 +253,7 @@ else:
     PR_INF_RUN_ID = mlflow.active_run().info.run_id
     _pr_status = "nova"
 
-RUN_INF_EXEC = run_name_vts(f"T_INF_MODE_{MODE_CODE}")
+RUN_INF_EXEC = run_name_vts("T_INF")
 mlflow.start_run(run_name=RUN_INF_EXEC, nested=True)
 INF_EXEC_RUN_ID = mlflow.active_run().info.run_id
 
@@ -449,6 +450,19 @@ df_wide.select(*[c for c in _show_cols if c in df_wide.columns]).orderBy(
 
 df_wide.write.format("delta").mode(WRITE_MODE).saveAsTable(OUTPUT_TABLE_FQN)
 mlflow.log_metric("output_saved", 1)
+
+tables_lineage = {
+    "stage":              "INFERENCIA",
+    "ts_exec":            TS_EXEC,
+    "mode":               MODE_CODE,
+    "inf_versao":         INF_VERSAO,
+    "seg_target":         SEG_TARGET,
+    "treino_exec_run_id": TREINO_EXEC_RUN_ID,
+    "model_ids":          MODEL_IDS_USED,
+    "inputs":             {"input_table":  INPUT_TABLE_FQN},
+    "outputs":            {"output_table": OUTPUT_TABLE_FQN},
+}
+mlflow.log_dict(tables_lineage, "tables_lineage.json")
 
 print("✅ Output salvo:", OUTPUT_TABLE_FQN)
 

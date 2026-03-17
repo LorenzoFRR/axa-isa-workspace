@@ -101,14 +101,14 @@ FEATURE_CANDIDATES = {
     "VL_ENDOSSO_PREMIO_TOTAL":                   True,   # decimal(17,2)
     "CD_FILIAL_RESPONSAVEL_COTACAO":             True,   # string
     "DS_ATIVIDADE_SEGURADO":                     True,   # string
-    "DS_GRUPO_CORRETOR_SEGMENTO":                True,   # string
+    "DS_GRUPO_CORRETOR_SEGMENTO":                False,   # string
     "DIAS_ULTIMA_ATUALIZACAO":                   False,   # int
     "DIAS_VALIDADE":                             False,   # int
     "DIAS_ANALISE_SUBSCRICAO":                   False,   # int
     "DIAS_FIM_ANALISE_SUBSCRICAO":               False,   # int
     "DIAS_COTACAO":                              False,   # int
     "DIAS_INICIO_VIGENCIA":                      False,   # int
-    "VL_GWP_CORRETOR_resumo":                    True,   # decimal(17,2)
+    "VL_GWP_CORRETOR_resumo":                    False,   # decimal(17,2)
     "QTD_ACORDO_COMERCIAL_resumo":               False,   # string
     "QTD_COTACAO_2024_detalhe":                  False,   # string
     "QTD_COTACAO_2025_detalhe":                  False,   # string
@@ -123,9 +123,6 @@ FEATURE_CANDIDATES = {
     "HR_M2_detalhe":                             False,   # decimal(17,6)
     "HR_M3_detalhe":                             False,   # decimal(17,6)
 }
-
-
-'VL_PREMIO_ALVO', 'VL_ENDOSSO_PREMIO_TOTAL'
 
 
 FS_METHODS_CONFIG = {
@@ -1245,7 +1242,7 @@ USE_CLASS_WEIGHT       = "auto"   # "auto" | True | False
 CLASS_WEIGHT_THRESHOLD = 0.30
 
 # CV + grid
-CV_FOLDS  = 5
+CV_FOLDS  = 2
 CV_SEED   = 42
 CV_METRIC = "areaUnderPR"
 
@@ -1256,7 +1253,7 @@ CV_METRIC = "areaUnderPR"
 # Exemplo com 4 combos: maxDepth=[4,6], stepSize=[0.1,0.05] → d4_s01, d4_s005, d6_s01, d6_s005
 GBT_PARAM_GRID = {
     "maxDepth": [4, 6],       # <<< adicionar valores para mais combos, ex: [4, 6]
-    "stepSize": [0.05, 0.1],     # <<< adicionar valores para mais combos, ex: [0.1, 0.05]
+    "stepSize": [0.1],     # <<< adicionar valores para mais combos, ex: [0.1, 0.05]
     "maxIter":  100,
 }
 
@@ -1265,7 +1262,7 @@ GBT_PARAM_GRID = {
 # "max_f2"              → τ que maximiza F2 (peso duplo no recall)
 # "precision_ge_target" → maior recall com precision >= EVAL_PRECISION_TARGET
 EVAL_CRITERION        = "max_f1"
-EVAL_PRECISION_TARGET = 0.25   # usado apenas quando EVAL_CRITERION = "precision_ge_target"
+EVAL_PRECISION_TARGET = 0.4   # usado apenas quando EVAL_CRITERION = "precision_ge_target"
 
 ID_COLS            = [ID_COL, "CD_DOC_CORRETOR", "TS_ARQ", SEG_COL, DATE_COL]
 DROP_FROM_FEATURES = ID_COLS + [STATUS_COL]

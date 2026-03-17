@@ -1,17 +1,18 @@
-OBS:
-- O texto que iniciar com [P] é uma pergunta/solicitação do usuário e deverá ser respondida com [R]. Cada pergunta poderá ter outras perguntas aninhadas. As perguntas deverão ser respondidas, respeitando o aninhamento.
-- O texto que iniciar com [D] é uma definição/escolha de desenvolvimento. Caso você tenha algum ponto contrário ao que está definido, aponte.
-- Existe a etapa 1_PRE_PROC, que é uma etapa inteira de pré-processamento e existe a etapa PRE_PROC_MODEL, que é uma sub-etapa dentro do TREINO/MODE_X.
-- O documento atual tem como objetivo mapear os pontos do fluxo que será implementado nos notebooks 3_TREINO_MODE_C, 4_INFERENCIA_MODE_C, 5_COMP_MODE_C - que são notebooks a serem desenvolvidos - de modo a fornecer uma visão sobre como o código será desenvolvido, etapa por etapa. Contudo, as escolhas/implementações nos notebooks a serem desenvolvidos podem ter relação direta com demais etapas anteriores, portanto, você deverá considerar este aspecto na proposição de desenvolvimento. Caso haja a necessidade de modificar algum notebook de uma etapa anterior, proponha.
-- Com base no documento atual NOTAS_MODELAGEM.md, a ideia é desenvolver um documento seguinte chamado PLANO_MODELAGEM.md, que deverá contemplar o plano conceitual de implementação/execução, contendo, em um nível de detalhe adequado:
-    - Descrição do que será executado em cada etapa
-    - Decisões técnicas definidas em cada etapa
-    - Descrição, em alto nível, do código que será implementado, quando necessário
-- Antes de criarmos o documento PLANO_MODELAGEM.md, leia o documento NOTAS_MODELAGEM.md (este documento) para validarmos o direcionamento que vamos seguir e o que será definido em PLANO_DEV.md
-- Caso tenha faltado alguma anotação em alguma etapa específica, proponha adicionar.
+# OBS:
+    - O texto que iniciar com [P] é uma pergunta/solicitação do usuário e deverá ser respondida com [R]. Cada pergunta poderá ter outras perguntas aninhadas. As perguntas deverão ser respondidas, respeitando o aninhamento.
+    - O texto que iniciar com [D] é uma definição/escolha de desenvolvimento. Caso você tenha algum ponto contrário ao que está definido, aponte.
+    - Existe a etapa 1_PRE_PROC, que é uma etapa inteira de pré-processamento e existe a etapa PRE_PROC_MODEL, que é uma sub-etapa dentro do TREINO/MODE_X.
+    - O documento atual tem como objetivo mapear os pontos do fluxo que será implementado nos notebooks 3_TREINO_MODE_C, 4_INFERENCIA_MODE_C, 5_COMP_MODE_C - que são notebooks a serem desenvolvidos - de modo a fornecer uma visão sobre como o código será desenvolvido, etapa por etapa. Contudo, as escolhas/implementações nos notebooks a serem desenvolvidos podem ter relação direta com demais etapas anteriores, portanto, você deverá considerar este aspecto na proposição de desenvolvimento. Caso haja a necessidade de modificar algum notebook de uma etapa anterior, proponha.
+    - Com base no documento atual NOTAS_MODELAGEM.md, a ideia é desenvolver um documento seguinte chamado PLANO_MODELAGEM.md, que deverá contemplar o plano conceitual de implementação/execução, contendo, em um nível de detalhe adequado:
+        - Descrição do que será executado em cada etapa
+        - Decisões técnicas definidas em cada etapa
+        - Descrição, em alto nível, do código que será implementado, quando necessário
+    - Antes de criarmos o documento PLANO_MODELAGEM.md, leia o documento NOTAS_MODELAGEM.md (este documento) para validarmos o direcionamento que vamos seguir e o que será definido em PLANO_DEV.md
+    - Caso tenha faltado alguma anotação em alguma etapa específica, proponha adicionar.
 
 ---
 
+# Fluxo Geral
 - [P] Descreva o que será logado em cada etapa, nas etapas correspondentes deste fluxo
     - [R] Os logs específicos de cada etapa estão detalhados nas seções correspondentes abaixo. Resumo por notebook:
         - **3_TREINO_MODE_C / PRE_PROC_MODEL**: params de split/filtro (salt, frac, status permitidos, col names), FQNs de input/output, `n_linhas_por_regra` (contagem após cada regra), `rules_catalog.json`, profiling de df_model e df_validacao.
@@ -106,7 +107,6 @@ OBS:
     - Artifacts: `rules_catalog.json`, `rules_execution.json`, `profiling_df_model.json`, `profiling_df_validacao.json`, `eda_df_model_by_seg.json`
 
 ## Definições etapa Feature Selection (FEATURE_SELECTION)
-- [D] A etapa deverá ser implementada com base no que foi feito para 3_TREINO_MODE_B.
 - [D] Deverá ser implementada também análise de MI (Mutual Information), apenas para análise, de modo a complementar os algoritmos implementados (RF, GBT, LR). MI não entrará como seletor
 - [D] Deverá ser implementada análise de Pearson (Correlação) entre variáveis selecionadas após Feature Selection
 - [P] Descreva como esta etapa será implementada e como serão feitos os logs
@@ -136,34 +136,8 @@ OBS:
             - Lift@K = Precision@K / baseline: depende do threshold de capacidade.
             - AUC-PR e AP são independentes do threshold (métricas de ranking global).
             - Mudar o threshold não altera a curva PR, apenas o ponto marcado sobre ela.
-        - [P] Quero definir o threshold de classificação utilizando o F1 máximo, embora eu esteja fazendo análises de capacidade. Como isso funcionaria? Faz sentido?
-            - [R] Faz sentido, mas são dois critérios com objetivos distintos que coexistem sem conflito:
-                - **Threshold por F1 máximo**: encontra o ponto da curva PR que maximiza `F1 = 2 × precision × recall / (precision + recall)`. É um critério global, agnóstico à capacidade do time. Resulta em um threshold fixo que equilibra precision e recall da melhor forma possível sobre o hold-out.
-                - **Threshold por capacidade (K)**: derivado de `K = int(n_hold_out × CAPACIDADE_PCT)` → threshold = score do K-ésimo elemento. É um critério operacional — define o corte em função do volume que o time consegue atender, não de uma métrica de modelo.
-                - **Como coexistem**: os dois thresholds marcam pontos *diferentes* sobre a mesma curva PR. É possível calcular ambos para cada modelo e comparar: se o threshold de F1 máximo cai próximo ao threshold de capacidade, os dois critérios convergem. Se diferem muito, significa que a capacidade do time está operando longe do ponto ótimo de F1.
-                - **Implementação prática no 5_COMP_MODE_C**: calcular ambos os thresholds por modelo e reportar lado a lado. Para o threshold de F1 máximo: varrer os scores únicos do hold-out como candidatos a threshold, calcular TP/FP/FN para cada um e selecionar o que maximiza F1. Pode ser feito com `df_ranked` já computado (window function sobre scores). Logar `threshold_f1_max_{model_id}` e `f1_max_{model_id}` como métricas no MLflow. Plotar ambos os thresholds marcados sobre a curva PR.
-        - [P] Em qual etapa o threshold de classificação é definido? `pred_emitida` é gerada na mesma etapa?
-            - [R] Em MODE_C, o threshold de classificação **não é definido no 3_TREINO** — é calculado no **5_COMP_MODE_C**, onde estão disponíveis os scores do hold-out e os parâmetros de negócio (`CAPACIDADE_PCT`, `LIFT_TARGET`). Dois thresholds distintos são calculados:
-                - **`threshold_f1_max`**: maximiza F1 sobre os scores do hold-out (critério de modelo)
-                - **`threshold_capacidade`**: score do K-ésimo elemento, derivado de `CAPACIDADE_PCT × n_hold_out` (critério operacional)
-                - **`pred_emitida` = f(threshold)**: sim, `pred_emitida` é uma função direta do threshold escolhido. Portanto ela é gerada no **5_COMP**, no momento em que os thresholds são calculados e aplicados sobre `p_emitida`. O 4_INFERENCIA_MODE_C produz apenas `p_emitida` (score contínuo) — sem `pred_emitida`.
-                - No COMP existem duas versões: `pred_emitida_f1` (usando `threshold_f1_max`) e `pred_emitida_k` (usando `threshold_capacidade`). Ambas derivadas do mesmo score, usadas para as respectivas confusion matrices e métricas @K.
-                - **Distinção importante**:
-                    - *Threshold de classificação*: ponto de corte do score para gerar rótulo binário (0/1). Critério de modelo — pode ser F1 máximo, recall mínimo, ou manual.
-                    - *Threshold operacional (de capacidade)*: derivado de K — não é parâmetro de modelo, é consequência da capacidade do time. Coincide com o threshold de classificação quando o critério de operação é a capacidade.
 - [D] Arquitetura do treino: GBT com CV 3-fold determinístico (hash por ID + CV_SEED) + grid search manual (4 combinações: maxDepth ∈ {4,6} × stepSize ∈ {0.05, 0.1}, maxIter fixo em 100). No entanto, como mencionado anteriormente, quero poder definir nas Configs quais os valores do grid e qual o tamanho do grid. A ideia é poder modifcar estes valores e quais parâmetros variar sem fazer alterações adiante no código
-- [D] Mudança em relação ao MODE_B: sem seleção automática de vencedor. Cada combinação do grid gera um modelo salvo individualmente. Cada modelo receberá um id, de modo que, em etapas posteriores, cada modelo possa ser referenciado, como na hora de escolher para quais modelos vou gerar as análises de performance e resultados. A cada execução do notebook, para um grid específico, quero gerar apenas uma run que treina e armazena todos os modelos, de modo a serem referenciados posteriormente.
-    - [P] Qual será a sugestão de implementação deste critério? Descreva.
-        - [R] Cada combinação do grid gera:
-            1. **ID único por modelo**: `model_id = f"d{maxDepth}_s{str(stepSize).replace('.','')}"` (ex: `d4_s005`, `d6_s01`). Gerado automaticamente a partir de `GBT_PARAM_GRID` via `itertools.product`, sem necessidade de edição manual.
-            2. **Treino final completo** em `df_model_ml` (igual ao MODE_B, mas para cada combo, não apenas o vencedor).
-            3. **Artefatos por modelo**:
-                - Modelo GBT: `treino_final/{model_id}/model` (via `mlflow.spark.log_model`)
-                - Pipeline de pré-processamento: `treino_final/{model_id}/preprocess_pipeline` (via `mlflow.spark.log_model`)
-            4. **Dicionário interno** `TRAINED_MODELS = {model_id: {"params": combo, "cv_avg_auc_pr": ..., "cv_std_auc_pr": ...}}` mantido em memória durante o notebook e serializado como artefato `cv/trained_models_registry.json`.
-            5. **Param `model_ids`** logado como JSON list na run exec do TREINO: `["d4_s005", "d4_s01", "d6_s005", "d6_s01"]`. Este param é o contrato entre o 3_TREINO e os notebooks 4 e 5.
-            - A run do TREINO contém todos os modelos como artefatos. Para referenciar um modelo específico na inferência, basta fornecer o `TREINO_EXEC_RUN_ID` e o `model_id` desejado (ou uma lista de model_ids).
-            - **Persistência entre sessões**: modelos e pipelines são salvos no artifact store do MLflow via `mlflow.spark.log_model`. Após encerramento do cluster, qualquer run posterior carrega o modelo com `mlflow.spark.load_model(f"runs:/{TREINO_EXEC_RUN_ID}/treino_final/{model_id}/model")` e o pipeline com `mlflow.spark.load_model(f"runs:/{TREINO_EXEC_RUN_ID}/treino_final/{model_id}/preprocess_pipeline")`. O par `(TREINO_EXEC_RUN_ID, model_id)` é a referência completa e suficiente. Em MODE_C, diferente do MODE_B, o pipeline **não precisa ser reconstruído** no 4_INFERENCIA — pode ser carregado diretamente do MLflow, eliminando a dependência de `DF_MODEL_FQN` na inferência.
+
 - **Logs desta etapa** (run exec T_TREINO):
     - Tags: `pipeline_tipo`, `stage`, `run_role`, `mode`, `step`, `treino_versao`, `versao_ref`
     - Params: `df_model_fqn`, `df_valid_fqn` (referência, não usado para hold-out aqui), `seg_target`, `feature_set`, `feature_cols`, `n_features`, `n_model`, `use_class_weight`, `apply_cw`, `weight_pos`, `label_rate`, `cv_folds`, `cv_seed`, `cv_metric`, `gbt_param_grid`, `model_ids`, `mode_code`, `pr_run_id`, `mode_run_id`, `treino_container_run_id`
@@ -266,3 +240,13 @@ A primeira pergunta: K_τ é compatível com a capacidade do time?
 Se K_τ >> capacidade: o modelo está selecionando mais cotações do que o time consegue atender — o threshold está frouxo demais como critério operacional.
 Se K_τ << capacidade: o modelo está sendo mais restritivo do que necessário — o time poderia atender mais, mas o threshold descarta cotações viáveis.
 Isso não é uma métrica de qualidade do modelo, mas de viabilidade operacional do ponto de operação.
+
+
+2. Confusion matrix como função de K
+
+A confusion matrix (TP, FP, FN, TN) calculada em τ=0.60 é, na prática, a confusion matrix em K=K_τ. Se você varia K (ordena por score e toma os top-K), a confusion matrix varia junto — e você pode plotá-la como curva:
+
+TP@K: quantos positivos reais estão nas top-K seleções
+FP@K: quantos negativos foram incluídos desnecessariamente
+FN@K: quantos positivos reais foram deixados de fora
+O ponto τ=0.60 aparece marcado nessa curva como um K específico — permitindo ver se está num ponto bom ou se deslocar K melhora a relação TP/FP.

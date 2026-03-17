@@ -54,8 +54,9 @@ git push
     - HR somente
   - [ ] Utilizar classificação, removendo HR, QTDs 🔵
   - [STDBY] Utilizar clusterização
-  - [ ] Reorganizar/Enxugar NOTAS_MODELAGEM.md / PLANO_MODELAGEM.md
+  - [ ] Reorganizar/Enxugar NOTAS_MODELAGEM.md / PLANO_MODELAGEM.md 🔴
     - A ideia é consultar o que foi realizado (no caso em MODE_C) e definir implementações que podem ser desenvolvidas (pegar como exemplo a análise de K e threshold e plot de confusion matrix no K, no final de NOTAS_MODELAGEM.d)
+  - [ ] Iniciar análise capacidade operacional para cruzamento com resultados dos modelos 🟠
 
 ####################################################################
 
@@ -77,11 +78,8 @@ git push
   - OK
 
   # 3_TREINO
-  - [x] Adicionar lineage nos logs
 
     # ETAPA PRE_PROC_MODEL
-    - [x] Definir lista de atributos presentes em silver.cotacao_seg que vão passar pro FS
-    - [x] Executar regras/pre-proc
     - [ ] Ajustar json pra acomodar 'rules_feature_prep' 🟠
 
     # ETAPA FEATURE SELECTION
@@ -94,31 +92,25 @@ git push
       - [STDBY] Permutation Importance
       - [STDBY] RFE - Recursive Feature Elimination
     - [ ] Ver FEATURE_CANDIDATES que não estão contempladas na tabela 🟠
-    - [ ] Ver se as regras de pre-processamento foram aplicadas e são passadas à etapa de FS (DS_SISTEMA, por exemplo, tá entrando em FS)
+    - [ ] Ver se as regras de pre-processamento foram aplicadas e são passadas à etapa de FS (DS_SISTEMA, por exemplo, tá entrando em FS) 🔴
 
     # ETAPA TREINO
     - [STDBY] Avaliar implementação Modelos de ranking direto (LambdaMART, LambdaRank)
     - [STDBY] Eleger Top-K features com base em curva de desempenho (AUC-PR x número de features)
-
     - [STDBY] Entender como trabalhar com calibração do score e influência decisão de threshold
       - Platt Scaling, Isotonic Regression
 
-    - [ ] 🔴 AJUSTE FEITO EM 16/03 (VERIFICAR): Verificar quais treinos do grid tão sendo registrados
-    - [ ] 🔴 AJUSTE FEITO EM 16/03 (VERIFICAR): Para etapa de INFERENCIA, adiante
-      - Quero ter apenas uma tabela por inferencia. Como terei vários modelos utilizados paralelamente para inferir, terei colunas repetidas, variando o modelo (model_id), como por exemplo
-        - p_emitida_model_id
-        - rank_global_model_id
-        - treino_exec_model_id_run_id (caso esta coluna for específica por model_id)
-      Ou seja, minha ideia é ter as colunas repetidas, mantendo cada cotação com apenas uma linha. Assim poderei fazer as análises posteriores diretamente da mesma tabela.
-    - [ ] Ajustar 3_TREINO_MODE_C pra não fechar a run antes da etapa de EVAL (deixar tudo na mesma run)
-
+    - [ ] Avaliar anomalias em EVAL 🟠
+    - [ ] Verificar se o TREINO contempla análise de overfitting 🟠
 
   # 4_INFERENCIA
+  - [ ] Adicionar lineage 🔴
   - [ ] Ajustar nome tabela de inferência criada (pode ser _mode_code_segmentacao_timestamp) 🔴
   - [ ] Verificar se tabela de inferência contempla os demais modelos do grid 🔴
   - [ ] Ajustar nome runs - T_INF_timestamp (MODE, SEG e VERSAO são logadas como tags/params) 🔴
   
   # 5_COMP
+  - [ ] Adicionar lineage 🔴
   - [ ] Desenvolver e testar código 🔴
 
   # 6_REPORT
