@@ -254,3 +254,15 @@ OBS:
                 - **TP@K, FP@K, FN@K**: altamente informativos. TP@K = emitidas capturadas no top-K (o que o time trabalha); FN@K = emitidas fora do top-K (oportunidades perdidas, que o modelo deveria minimizar); FP@K = perdidas no top-K (esforço desperdiçado). Devem ser incluídos.
                 - **TN@K**: menos informativo para ranking — representa as perdidas que ficaram fora do top-K, o que é esperado. Pode ser incluído por completude da confusion matrix @K, mas não é o foco da análise.
                 - Implementação: para cada K em `K_LIST` e cada `model_id`, calcular TP/FP/FN/TN @K usando `df_ranked.filter(col("rank") <= K)`. Logar como metrics no MLflow (ex: `tp_at_k_{pct}pct_{model_id}`) e incluir no `comparativo/metrics_summary.json`.
+
+
+
+Análises threshold-dependentes que se conectam a K
+
+1. K_τ vs. capacidade real
+
+A primeira pergunta: K_τ é compatível com a capacidade do time?
+
+Se K_τ >> capacidade: o modelo está selecionando mais cotações do que o time consegue atender — o threshold está frouxo demais como critério operacional.
+Se K_τ << capacidade: o modelo está sendo mais restritivo do que necessário — o time poderia atender mais, mas o threshold descarta cotações viáveis.
+Isso não é uma métrica de qualidade do modelo, mas de viabilidade operacional do ponto de operação.

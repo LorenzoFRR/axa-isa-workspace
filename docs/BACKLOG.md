@@ -1,4 +1,5 @@
 ####################################################################
+
 Backlog — Ideias, Pontos Pendentes, Anotações, Dúvidas
 
 Organizado por categoria.
@@ -16,7 +17,7 @@ git push
 ####################################################################
 
 # Integrações / Otimização desenvolvimento
-- [STDBY] Integrar Claude Code diretamente ao Databricks (aguardando permissões)
+- [STDBY] Integrar Claude Code diretamente ao Databricks
 - [STDBY] Automatizar exportação/importação de notebooks via Databricks CLI ou API
 - [STDBY] Criar repositório Github e fornecer acesso para consulta do Workspace Claude
 - [STDBY] Criar 'agente' contextualizado para tarefas de desenvolvimento de ML Pipelines
@@ -44,6 +45,8 @@ git push
 
 # Direcionamentos Gerais
 - [STDBY] Fazer ingestão completa para desenvolvimento 
+
+## Definição direcionamento 16/03
 - [STDBY] Criar modelos abrindo além de SEG_NOVO/RENOVACAO/MANUAL/DIGITAL
 - [ ] Treinar modelos com novas abordagens
   - [ ] Utilizar dados de corretor atualizados 🔵
@@ -51,6 +54,8 @@ git push
     - HR somente
   - [ ] Utilizar classificação, removendo HR, QTDs 🔵
   - [STDBY] Utilizar clusterização
+  - [ ] Reorganizar/Enxugar NOTAS_MODELAGEM.md / PLANO_MODELAGEM.md
+    - A ideia é consultar o que foi realizado (no caso em MODE_C) e definir implementações que podem ser desenvolvidas (pegar como exemplo a análise de K e threshold e plot de confusion matrix no K, no final de NOTAS_MODELAGEM.d)
 
 ####################################################################
 
@@ -89,6 +94,7 @@ git push
       - [STDBY] Permutation Importance
       - [STDBY] RFE - Recursive Feature Elimination
     - [ ] Ver FEATURE_CANDIDATES que não estão contempladas na tabela 🟠
+    - [ ] Ver se as regras de pre-processamento foram aplicadas e são passadas à etapa de FS (DS_SISTEMA, por exemplo, tá entrando em FS)
 
     # ETAPA TREINO
     - [STDBY] Avaliar implementação Modelos de ranking direto (LambdaMART, LambdaRank)
