@@ -30,7 +30,7 @@ STEP_TREINO_NAME            = "T_TREINO"
 # =========================
 # Versionamento
 # =========================
-TREINO_VERSAO            = "V9.0.0"
+TREINO_VERSAO            = "V10.0.0"
 TREINO_VERSAO_TABLE_SAFE = TREINO_VERSAO.replace(".", "_")
 VERSAO_REF               = TREINO_VERSAO
 
@@ -44,7 +44,7 @@ def run_name_vts(base: str) -> str:
 # =========================
 # INPUT
 # =========================
-COTACAO_SEG_FQN = "silver.cotacao_seg_20260310_163401"  # <<< AJUSTE
+COTACAO_SEG_FQN = "silver.cotacao_seg_20260318_112204"  # <<< AJUSTE
 
 # =========================
 # OUTPUT
@@ -97,31 +97,22 @@ FEATURE_CANDIDATES = {
     "VL_PREMIO_LIQUIDO":                         True,   # decimal(17,2)
     "VL_PRE_TOTAL":                              True,   # decimal(17,2)
     "DS_PRODUTO_NOME":                           True,   # string
-    "DS_SISTEMA":                                True,   # string
+    "DS_SISTEMA":                                False,   # string
     "VL_ENDOSSO_PREMIO_TOTAL":                   True,   # decimal(17,2)
     "CD_FILIAL_RESPONSAVEL_COTACAO":             True,   # string
     "DS_ATIVIDADE_SEGURADO":                     True,   # string
     "DS_GRUPO_CORRETOR_SEGMENTO":                False,   # string
     "DIAS_ULTIMA_ATUALIZACAO":                   False,   # int
-    "DIAS_VALIDADE":                             False,   # int
-    "DIAS_ANALISE_SUBSCRICAO":                   False,   # int
-    "DIAS_FIM_ANALISE_SUBSCRICAO":               False,   # int
-    "DIAS_COTACAO":                              False,   # int
-    "DIAS_INICIO_VIGENCIA":                      False,   # int
-    "VL_GWP_CORRETOR_resumo":                    False,   # decimal(17,2)
-    "QTD_ACORDO_COMERCIAL_resumo":               False,   # string
-    "QTD_COTACAO_2024_detalhe":                  False,   # string
-    "QTD_COTACAO_2025_detalhe":                  False,   # string
-    "QTD_COTACAO_M2_detalhe":                    False,   # string
-    "QTD_COTACAO_M3_detalhe":                    False,   # string
-    "QTD_EMITIDO_2024_detalhe":                  False,   # string
-    "QTD_EMITIDO_2025_detalhe":                  False,   # string
-    "QTD_EMITIDO_M2_detalhe":                    False,   # string
-    "QTD_EMITIDO_M3_detalhe":                    False,   # string
-    "HR_2024_detalhe":                           False,   # decimal(17,6)
-    "HR_2025_detalhe":                           False,   # decimal(17,6)
-    "HR_M2_detalhe":                             False,   # decimal(17,6)
-    "HR_M3_detalhe":                             False,   # decimal(17,6)
+    "DIAS_VALIDADE":                             True,   # int
+    "DIAS_ANALISE_SUBSCRICAO":                   True,   # int
+    "DIAS_FIM_ANALISE_SUBSCRICAO":               True,   # int
+    "DIAS_COTACAO":                              True,   # int
+    "DIAS_INICIO_VIGENCIA":                      True,   # int
+    "VL_GWP_CORRETOR_resumo":                    True,   # decimal(17,2)
+    "QTD_ACORDO_COMERCIAL_resumo":               True,   # string
+    "QTD_COTACAO_2025_detalhe":                  True,   # string
+    "QTD_EMITIDO_2025_detalhe":                  True,   # string
+    "HR_2025_detalhe":                           True,   # decimal(17,6)
 }
 
 
@@ -357,6 +348,12 @@ def PP_R03_cria_label(df: DataFrame) -> DataFrame:
          .when(F.col(STATUS_COL) == "Perdida", F.lit(0.0))
          .otherwise(F.lit(None).cast("double")))
 
+MESES_EXCLUSAO_PP_R07 = ["2025-11", "2025-12"]
+
+def PP_R07_drop_meses_exclusao(df: DataFrame) -> DataFrame:
+    mes_col = F.date_format(F.to_date(F.col(DATE_COL)), "yyyy-MM")
+    return df.filter(~mes_col.isin(MESES_EXCLUSAO_PP_R07))
+
 def BUILD_R01_add_mes(df: DataFrame) -> DataFrame:
     return (df.withColumn("DATA_COTACAO_dt", F.to_date(F.col(DATE_COL)))
               .filter(F.col("DATA_COTACAO_dt").isNotNull())
@@ -394,6 +391,7 @@ TOGGLES_RULES_ON_DF_SEG = {
     "PP_R01": True,   # Normalizar DS_GRUPO_STATUS (EMITIDA→Emitida, PERDIDA→Perdida)
     "PP_R02": True,   # Manter apenas status finais (Emitida, Perdida) — sem converter intermediários
     "PP_R03": True,   # Criar coluna label (Emitida=1.0, Perdida=0.0)
+    "PP_R07": True,   # Excluir cotações dos meses 2025-11 e 2025-12
 }
 
 TOGGLES_RULES_BUILD_BASE = {
@@ -437,6 +435,10 @@ RULES_ON_DF_SEG = [
              PP_R03_cria_label,
              enabled=TOGGLES_RULES_ON_DF_SEG["PP_R03"],
              requires_columns=[STATUS_COL]),
+    rule_def("PP_R07", f"Excluir cotações dos meses {MESES_EXCLUSAO_PP_R07}",
+             PP_R07_drop_meses_exclusao,
+             enabled=TOGGLES_RULES_ON_DF_SEG["PP_R07"],
+             requires_columns=[DATE_COL]),
 ]
 
 RULES_BUILD_BASE = [
