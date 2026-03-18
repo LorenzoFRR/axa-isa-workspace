@@ -44,7 +44,7 @@ git push
 ####################################################################
 
 # Direcionamentos Gerais
-- [STDBY] Fazer ingestão completa para desenvolvimento 
+- [STDBY] Fazer ingestão completa para desenvolvimento
 - [ ] Ver com Kimura como fica atualização dos dados de corretor quando tivermos pipeline de produção 🔴
   - Contudo, hoje, no pipeline de treino com dados de 2025, não é problemático
 

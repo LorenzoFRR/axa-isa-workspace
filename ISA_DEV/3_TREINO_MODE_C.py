@@ -110,11 +110,18 @@ FEATURE_CANDIDATES = {
     "DIAS_INICIO_VIGENCIA":                      True,   # int
     "VL_GWP_CORRETOR_resumo":                    True,   # decimal(17,2)
     "QTD_ACORDO_COMERCIAL_resumo":               True,   # string
-    "QTD_COTACAO_2025_detalhe":                  True,   # string
-    "QTD_EMITIDO_2025_detalhe":                  True,   # string
+    "QTD_COTACAO_2025_detalhe":                  True,   # int → cast double
+    "QTD_EMITIDO_2025_detalhe":                  True,   # int → cast double
     "HR_2025_detalhe":                           True,   # decimal(17,6)
 }
 
+
+# Colunas que chegam como string no schema mas são numéricas semanticamente.
+# Serão castadas para double antes da classificação cat/num no bloco FS.
+FEATURE_NUMERIC_OVERRIDES = [
+    "QTD_COTACAO_2025_detalhe",
+    "QTD_EMITIDO_2025_detalhe",
+]
 
 FS_METHODS_CONFIG = {
     "lr_l1": {"maxIter": 100, "regParam": 0.01, "elasticNetParam": 1.0},
@@ -890,6 +897,11 @@ with mlflow.start_run(**_fs_kw, nested=True) as fs_container:
         if n_rows_seg == 0:
             raise ValueError(f"❌ Nenhuma linha para SEG_TARGET='{SEG_TARGET}' em {DF_MODEL_FQN}")
 
+        # ── Cast de colunas numéricas que chegam como string no schema ──────────
+        for _c in FEATURE_NUMERIC_OVERRIDES:
+            if _c in dict(df_seg.dtypes):
+                df_seg = df_seg.withColumn(_c, F.col(_c).cast("double"))
+
         # ── Derivar cat/num a partir do schema e dos toggles FEATURE_CANDIDATES ──
         _schema_fs   = dict(df_seg.dtypes)
         _fc_enabled  = [c for c, v in FEATURE_CANDIDATES.items() if v     and c in _schema_fs]
@@ -1239,6 +1251,10 @@ with mlflow.start_run(**_fs_kw, nested=True) as fs_container:
 # Chave do feature set gerado pelo FS — deve existir em FS_FEATURE_SETS
 TREINO_FEATURE_SET_KEY = "top_5"  # <<< AJUSTE
 
+# Features que entram no modelo independentemente do top-K selecionado pelo FS.
+# Devem estar habilitadas (True) em FEATURE_CANDIDATES.
+TREINO_FEATURES_PINNED = []   # ex: ["VL_PREMIO_ALVO"]
+
 # Class weight
 USE_CLASS_WEIGHT       = "auto"   # "auto" | True | False
 CLASS_WEIGHT_THRESHOLD = 0.30
@@ -1269,7 +1285,13 @@ EVAL_PRECISION_TARGET = 0.4   # usado apenas quando EVAL_CRITERION = "precision_
 ID_COLS            = [ID_COL, "CD_DOC_CORRETOR", "TS_ARQ", SEG_COL, DATE_COL]
 DROP_FROM_FEATURES = ID_COLS + [STATUS_COL]
 
-TREINO_FEATURE_COLS = FS_FEATURE_SETS[TREINO_FEATURE_SET_KEY]
+_topk_cols      = FS_FEATURE_SETS[TREINO_FEATURE_SET_KEY]
+_pinned_valid   = [c for c in TREINO_FEATURES_PINNED if c in FS_CAT_COLS + FS_NUM_COLS]
+_pinned_invalid = [c for c in TREINO_FEATURES_PINNED if c not in FS_CAT_COLS + FS_NUM_COLS]
+if _pinned_invalid:
+    print(f"⚠️  TREINO_FEATURES_PINNED ignoradas (não habilitadas em FEATURE_CANDIDATES): {_pinned_invalid}")
+# União deduplicada: top-K primeiro, pinned adicionadas ao final se ausentes
+TREINO_FEATURE_COLS = list(dict.fromkeys(_topk_cols + _pinned_valid))
 
 print("✅ T_TREINO inputs:")
 print("• df_model_fqn :", DF_MODEL_FQN)
@@ -1543,6 +1565,7 @@ with mlflow.start_run(**_tr_kw, nested=True) as treino_container:
             "seg_target":              SEG_TARGET,
             "feature_set":             TREINO_FEATURE_SET_KEY,
             "feature_cols":            json.dumps(TREINO_FEATURE_COLS),
+            "treino_features_pinned":  json.dumps(TREINO_FEATURES_PINNED),
             "n_features":              len(TREINO_FEATURE_COLS),
             "n_model":                 n_model,
             "use_class_weight":        str(USE_CLASS_WEIGHT),
