@@ -46,6 +46,13 @@ MODEL_IDS = []
 TREINO_EXEC_RUN_ID = "a53ffb7f8ad647cd97dd704cbaf0b50f"   # <<< AJUSTE
 
 # =========================
+# REFERÊNCIA AO JOIN
+# =========================
+# run_id do exec run do JOIN (run_role=exec, etapa=JOIN) — necessário para barras de status no gráfico temporal.
+# Se vazio, barras não são adicionadas ao gráfico.
+JOIN_EXEC_RUN_ID = ""   # <<< AJUSTE
+
+# =========================
 # PARÂMETROS DE ANÁLISE
 # =========================
 TOPK_STEP    = 1    # passo da varredura K% (1 = K=1%,2%,...,100%)
@@ -260,6 +267,28 @@ if TREINO_EXEC_RUN_ID:
 else:
     MODEL_THRESHOLDS = {m: None for m in MODEL_IDS_USED}
     print("• TREINO_EXEC_RUN_ID não preenchido — thresholds não serão anotados")
+
+# ── Carregar distribuição mensal de status do JOIN (opcional) ─────────────────
+_pdf_status_month = None   # pd.DataFrame com colunas: MES + status cols
+
+if JOIN_EXEC_RUN_ID:
+    try:
+        with tempfile.TemporaryDirectory() as _td:
+            _local = client.download_artifacts(
+                JOIN_EXEC_RUN_ID, "analysis/status_by_month_pivot.json", _td
+            )
+            with open(_local) as _f:
+                _pivot_data = json.load(_f)
+        if _pivot_data.get("ok"):
+            _pdf_status_month = pd.DataFrame(_pivot_data["rows"])
+            mlflow.log_param("join_exec_run_id", JOIN_EXEC_RUN_ID)
+            print("• status-by-month carregado:", _pdf_status_month.shape)
+        else:
+            print(f"⚠️  status_by_month_pivot.json retornou ok=False: {_pivot_data}")
+    except Exception as _e:
+        print(f"⚠️  Status-by-month do JOIN não carregado: {_e}")
+else:
+    print("• JOIN_EXEC_RUN_ID não preenchido — barras de status não serão adicionadas ao gráfico temporal")
 
 print("✅ Dados carregados")
 print(f"• n_rows={N}  n_pos={n_pos}  base_rate={base_rate:.4f}")
@@ -708,16 +737,44 @@ if len(meses) > 1:
     pdf_temporal = pd.DataFrame(temporal_rows)
     log_csv(pdf_temporal, "temporal/monthly_stats.csv")
 
-    fig, ax = plt.subplots(figsize=(12, 5))
+    fig, ax = plt.subplots(figsize=(14, 5))
+
+    # --- Barras empilhadas de status (eixo secundário, atrás das linhas) ---
+    ax2 = ax.twinx()
+    if _pdf_status_month is not None and not _pdf_status_month.empty:
+        _status_cols = [c for c in _pdf_status_month.columns if c != "MES"]
+        _sdf = _pdf_status_month[_pdf_status_month["MES"].isin(meses)].copy()
+        _sdf = _sdf.set_index("MES").reindex(meses).fillna(0)
+
+        _bottom = np.zeros(len(meses))
+        _bar_colors = plt.cm.Pastel1.colors
+        for _ci, _sc in enumerate(_status_cols):
+            _vals = _sdf[_sc].values.astype(float)
+            ax2.bar(range(len(meses)), _vals, bottom=_bottom,
+                    label=_sc, color=_bar_colors[_ci % len(_bar_colors)],
+                    alpha=0.45, zorder=1)
+            _bottom += _vals
+
+        ax2.set_ylabel("Qtd cotações (JOIN)")
+        ax2.legend(loc="upper left", fontsize=8, title="DS_GRUPO_STATUS")
+        ax2.yaxis.set_label_position("right")
+        ax2.yaxis.tick_right()
+
+    # --- Linhas de P@K (eixo principal, à frente) ---
     for i, model_id in enumerate(MODEL_IDS_USED):
         sub = pdf_temporal[pdf_temporal["model_id"] == model_id].sort_values("mes")
         ax.plot(range(len(meses)), sub["p_at_k"].values,
-                color=model_color(i), marker="o", linewidth=1.5, label=model_id)
+                color=model_color(i), marker="o", linewidth=1.5, label=model_id, zorder=3)
 
-    ax.set_xlabel("Mês"); ax.set_ylabel(f"P@{TOPK_REF_PCT}%")
+    ax.set_xlabel("Mês")
+    ax.set_ylabel(f"P@{TOPK_REF_PCT}%")
     ax.set_title(f"Estabilidade temporal — P@{TOPK_REF_PCT}% por mês (MODE_C | {SEG_TARGET})")
-    ax.set_xticks(range(len(meses))); ax.set_xticklabels(meses, rotation=45, ha="right")
-    ax.grid(True); ax.legend()
+    ax.set_xticks(range(len(meses)))
+    ax.set_xticklabels(meses, rotation=45, ha="right")
+    ax.grid(True, zorder=0)
+    ax.legend(loc="upper right")
+    ax.set_zorder(ax2.get_zorder() + 1)
+    ax.patch.set_visible(False)
     plt.tight_layout()
     log_png(fig, "temporal/precision_monthly.png")
 
