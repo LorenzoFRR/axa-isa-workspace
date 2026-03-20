@@ -61,55 +61,64 @@ git push
 ####################################################################
 - [ ] Limpar catalogo 🔴
 
+# 0_INGESTAO
+- [ ] Avaliar se tabelas de corretor vão continuar sendo processados
+- [ ] Re-avaliar nomenclatura tabelas de corretor (fazer por timestamp?)
+- [ ] Logar profiling tabelas de corretor
+- [ ] 
+
+
 # 1_PRE_PROC
   - [STDBY] Implementar lógica: se não foi atualizada regra pra uma tabela e ela já existe, então não recriá-la
-  - [DEPENDENTE] Implementar pré-processamento + regras definidas em análise base
+  - [ ] Fazer análise e implementar função que calcula regra temporal colunas DIAS_*
+  - [ ] Apagar DT_INICIO_VIGENCIA justamente porque já crio DIAS_INICIO_VIGENCIA
+  - [ ] Entender como trabalhar com DIAS_ANALISE_SUBSCRICAO para cotações DIGITAL
 
 # 2_JOIN
   - OK
 
-# MODE_C
-  # 0_INGESTAO
-  - OK
+# 0_INGESTAO
+- OK
 
-  # 1_PRE_PROC
-  - OK
+# 1_PRE_PROC
+- OK
 
-  # 2_JOIN
-  - OK
+# 2_JOIN
+- OK
 
-  # 3_TREINO
+# 3_TREINO
 
-    # ETAPA PRE_PROC_MODEL
-    - [ ] Ajustar json pra acomodar 'rules_feature_prep' 🔴
+  # ETAPA PRE_PROC_MODEL
+  - [ ] Ajustar json pra acomodar 'rules_feature_prep' 🔴
 
-    # ETAPA FEATURE SELECTION
-    - [STDBY] Implementar partição exclusiva ou CV na etapa de FS - explorar aspecto de variância com etapa de treinamento
-    - [STDBY] Verificar possibilidade de explorar splits, SEEDs, params, etc
-      - [STDBY] Analisar custo e tempo de execução - Mais coerente explorar CV ou SEEDs diferentes?
-      - [STDBY] Variar depth/regularização para verificar estabilidade do ranking
-    - [STDBY] Métodos paralelos de Análise de Importância
-      - [STDBY] SHAP // Fornece sentido de relação (positivo, negativo)
-      - [STDBY] Permutation Importance
-      - [STDBY] RFE - Recursive Feature Elimination
-    - [ ] Ver FEATURE_CANDIDATES que não estão contempladas na tabela 🔴
-    - [ ] Ver se as regras de pre-processamento foram aplicadas e são passadas à etapa de FS (DS_SISTEMA, por exemplo, tá entrando em FS) 🔴
+  # ETAPA FEATURE SELECTION
+  - [STDBY] Implementar partição exclusiva ou CV na etapa de FS - explorar aspecto de variância com etapa de treinamento
+  - [STDBY] Verificar possibilidade de explorar splits, SEEDs, params, etc
+    - [STDBY] Analisar custo e tempo de execução - Mais coerente explorar CV ou SEEDs diferentes?
+    - [STDBY] Variar depth/regularização para verificar estabilidade do ranking
+  - [STDBY] Métodos paralelos de Análise de Importância
+    - [STDBY] SHAP // Fornece sentido de relação (positivo, negativo)
+    - [STDBY] Permutation Importance
+    - [STDBY] RFE - Recursive Feature Elimination
+  - [ ] Testar FS em grid
+  - [ ] Ver FEATURE_CANDIDATES que não estão contempladas na tabela 🔴
+  - [ ] Ver se as regras de pre-processamento foram aplicadas e são passadas à etapa de FS (DS_SISTEMA, por exemplo, tá entrando em FS) 🔴
 
-    # ETAPA TREINO
-    - [STDBY] Avaliar implementação Modelos de ranking direto (LambdaMART, LambdaRank)
-    - [STDBY] Eleger Top-K features com base em curva de desempenho (AUC-PR x número de features)
-    - [STDBY] Entender como trabalhar com calibração do score e influência decisão de threshold
-      - Platt Scaling, Isotonic Regression
+  # ETAPA TREINO
+  - [STDBY] Avaliar implementação Modelos de ranking direto (LambdaMART, LambdaRank)
+  - [STDBY] Eleger Top-K features com base em curva de desempenho (AUC-PR x número de features)
+  - [STDBY] Entender como trabalhar com calibração do score e influência decisão de threshold
+    - Platt Scaling, Isotonic Regression
 
-    - [ ] Avaliar anomalias em EVAL 🔴
+  - [ ] Avaliar anomalias em EVAL 🔴
 
-  # 4_INFERENCIA
-  - OK
+# 4_INFERENCIA
+- OK
 
-  # 5_COMP
-  - OK
+# 5_COMP
+- OK
 
-  # 6_REPORT
-  - [ ] Referenciar run_id de modelos e gerar comparações
+# 6_REPORT
+- [ ] Referenciar run_id de modelos e gerar comparações
 
 
