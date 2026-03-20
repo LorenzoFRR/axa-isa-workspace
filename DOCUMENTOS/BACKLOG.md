@@ -40,6 +40,7 @@ git push
     - e.g. Para uma dada tabela, verificar quais runs estão associadas
     - e.g. Para uma dada run, verificar quais tabelas estão associadas
     - e.g. Para cada VX, qual MODE está associada
+    - e.g. Mostrar visão ramificada
 
 ####################################################################
 

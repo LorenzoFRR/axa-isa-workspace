@@ -129,7 +129,7 @@ FS_METHODS_CONFIG = {
     "gbt":   {"maxIter": 80,  "maxDepth": 5, "stepSize": 0.1},
 }
 
-TOPK_LIST = [5]
+TOPK_LIST = [7]
 
 print("✅ CONFIG MODE_C carregada")
 print("• input         :", COTACAO_SEG_FQN)
@@ -916,7 +916,7 @@ with mlflow.start_run(**_fs_kw, nested=True) as fs_container:
         EXCLUIR_DE_FEATURES = set()
 
         if _fc_absent:
-            print(f"⚠️  Colunas em FEATURE_CANDIDATES ausentes na tabela: {_fc_absent}")
+            print(f"⚠️  Colunas em FEATURE_CANDIDATES ausentes - Removidas em PRE_PROC_MODEL: {_fc_absent}")
         print(f"• cat_cols ({len(FS_CAT_COLS)}): {FS_CAT_COLS}")
         print(f"• num_cols ({len(FS_NUM_COLS)}): {FS_NUM_COLS}")
         print(f"• disabled ({len(_fc_disabled)}): {_fc_disabled}")
@@ -1249,11 +1249,11 @@ with mlflow.start_run(**_fs_kw, nested=True) as fs_container:
 # COMMAND ----------
 
 # Chave do feature set gerado pelo FS — deve existir em FS_FEATURE_SETS
-TREINO_FEATURE_SET_KEY = "top_5"  # <<< AJUSTE
+TREINO_FEATURE_SET_KEY = "top_7"  # <<< AJUSTE
 
 # Features que entram no modelo independentemente do top-K selecionado pelo FS.
 # Devem estar habilitadas (True) em FEATURE_CANDIDATES.
-TREINO_FEATURES_PINNED = []   # ex: ["VL_PREMIO_ALVO"]
+TREINO_FEATURES_PINNED = ['DIAS_VALIDADE', 'QTD_COTACAO_2025_detalhe', 'QTD_EMITIDO_2025_detalhe', 'HR_2025_detalhe']
 
 # Class weight
 USE_CLASS_WEIGHT       = "auto"   # "auto" | True | False
@@ -1265,15 +1265,14 @@ CV_SEED   = 42
 CV_METRIC = "areaUnderPR"
 
 # Grid de hiperparâmetros
-# Listas: variam no grid → cada combinação gera um model_id.
-# Scalar (maxIter): fixo em todos os combos.
-# Exemplo com 1 combo: maxDepth=[4], stepSize=[0.1] → d4_s01
-# Exemplo com 4 combos: maxDepth=[4,6], stepSize=[0.1,0.05] → d4_s01, d4_s005, d6_s01, d6_s005
+# maxIter do CV reduzido para evitar OOM/swap no cluster (4 cores, 16 GB).
+# Fit final usa GBT_MAXITER_FINAL para número maior de iterações.
 GBT_PARAM_GRID = {
-    "maxDepth": [4, 6],       # <<< adicionar valores para mais combos, ex: [4, 6]
-    "stepSize": [0.1],     # <<< adicionar valores para mais combos, ex: [0.1, 0.05]
-    "maxIter":  100,
+    "maxDepth": [4, 6],
+    "stepSize": [0.1, 0.05],
+    "maxIter":  50,          # ← CV rápido; aumentar em clusters maiores
 }
+GBT_MAXITER_FINAL = 150     # ← maxIter exclusivo para o fit final (todos os dados)
 
 # Eval — critério de seleção de τ na curva PR
 # "max_f1"              → τ que maximiza F1 (equilíbrio precision/recall)
@@ -1599,26 +1598,34 @@ with mlflow.start_run(**_tr_kw, nested=True) as treino_container:
             labelCol=LABEL_COL, rawPredictionCol="rawPrediction", metricName="areaUnderPR"
         )
 
-        # ── [2] CV 3-fold determinístico ──────────────────────────────────
-        folds         = kfold_split(df_model_ml, CV_FOLDS, CV_SEED, ID_COL)
-        grid_results  = []
-        fold_metrics  = []
+        # ── [2] CV determinístico ──────────────────────────────────────────
+        # Preprocessing é fitado uma vez por fold e cacheado antes do loop
+        # de combos — evita refazer StringIndexer/OHE/Imputer N_COMBOS vezes.
+        folds        = kfold_split(df_model_ml, CV_FOLDS, CV_SEED, ID_COL)
+        grid_results = []
+        fold_metrics = []
+
+        folds_vec = []
+        for fold_i, (df_tr_fold, df_va_fold) in enumerate(folds):
+            pp     = build_preprocess_pipeline(treino_cat_cols, treino_num_cols)
+            pp_fit = pp.fit(df_tr_fold)
+            df_tr_vec = pp_fit.transform(df_tr_fold).select(LABEL_COL, "weight", "features_vec").cache()
+            df_va_vec = pp_fit.transform(df_va_fold).select(LABEL_COL, "features_vec").cache()
+            df_tr_vec.count()   # força materialização antes do loop de GBTs
+            df_va_vec.count()
+            folds_vec.append((df_tr_vec, df_va_vec))
 
         for combo in param_combinations:
             combo_key = f"d{combo['maxDepth']}_s{str(combo['stepSize']).replace('.', '')}"
             fold_aucs = []
 
-            for fold_i, (df_tr_fold, df_va_fold) in enumerate(folds):
-                pp     = build_preprocess_pipeline(treino_cat_cols, treino_num_cols)
-                pp_fit = pp.fit(df_tr_fold)
-                df_tr_vec = pp_fit.transform(df_tr_fold).select(LABEL_COL, "weight", "features_vec").cache()
-                df_va_vec = pp_fit.transform(df_va_fold).select(LABEL_COL, "features_vec").cache()
-
+            for fold_i, (df_tr_vec, df_va_vec) in enumerate(folds_vec):
                 gbt = GBTClassifier(
                     featuresCol="features_vec", labelCol=LABEL_COL,
                     weightCol="weight" if apply_cw else None,
                     maxDepth=combo["maxDepth"], stepSize=combo["stepSize"],
                     maxIter=combo["maxIter"], seed=CV_SEED,
+                    subsamplingRate=0.8,
                 )
                 gbt_fit  = gbt.fit(df_tr_vec)
                 pred_val = gbt_fit.transform(df_va_vec)
@@ -1632,7 +1639,6 @@ with mlflow.start_run(**_tr_kw, nested=True) as treino_container:
                 })
 
                 mlflow.log_metric(f"cv_{combo_key}_fold{fold_i}_auc_pr", auc_pr)
-                df_tr_vec.unpersist(); df_va_vec.unpersist()
 
             avg_auc_pr = float(np.mean(fold_aucs))
             std_auc_pr = float(np.std(fold_aucs))
@@ -1645,6 +1651,9 @@ with mlflow.start_run(**_tr_kw, nested=True) as treino_container:
                 f"cv_{combo_key}_avg_auc_pr": avg_auc_pr,
                 f"cv_{combo_key}_std_auc_pr": std_auc_pr,
             })
+
+        for df_tr_vec, df_va_vec in folds_vec:
+            df_tr_vec.unpersist(); df_va_vec.unpersist()
 
         mlflow.log_dict(grid_results, "cv/grid_results.json")
         mlflow.log_dict(fold_metrics, "cv/fold_metrics.json")
@@ -1670,7 +1679,8 @@ with mlflow.start_run(**_tr_kw, nested=True) as treino_container:
                 featuresCol="features_vec", labelCol=LABEL_COL,
                 weightCol="weight" if apply_cw else None,
                 maxDepth=combo["maxDepth"], stepSize=combo["stepSize"],
-                maxIter=combo["maxIter"], seed=CV_SEED,
+                maxIter=GBT_MAXITER_FINAL, seed=CV_SEED,
+                subsamplingRate=0.8,
             )
             gbt_model = gbt_final.fit(df_model_vec)
 
@@ -1796,6 +1806,7 @@ print("\n✅ T_TREINO + T_EVAL ok")
 print("• TREINO_EXEC_RUN_ID :", TREINO_EXEC_RUN_ID)
 print("• Modelos treinados  :", list(TRAINED_MODELS.keys()))
 print("\nEVAL:")
+
 for mid, r in eval_results.items():
     print(f"• {mid}: τ={r['threshold']}  P={r['precision']}  R={r['recall']}  F1={r['f1']}  F2={r['f2']}")
 print("\n⚠️  Anotar TREINO_EXEC_RUN_ID para uso no 4_INFERENCIA_MODE_C e 5_COMP_MODE_C:")

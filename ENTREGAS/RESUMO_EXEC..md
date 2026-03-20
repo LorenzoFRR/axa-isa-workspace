@@ -1,41 +1,71 @@
-# Resumo desenvolvimento Intelligent Score Agent - AXA
+# Resumo Executivo — Intelligent Score Agent (ISA) | AXA
 
-## 1) Desafio e Solução - Interpretação da aplicação do sistema pelos times AXA/PSW
+O ISA é um sistema que aprende com o histórico de cotações e as ordena por probabilidade de conversão, permitindo que o time comercial concentre seu esforço nos clientes com maior potencial — dentro da capacidade operacional existente. Hoje, o pipeline de desenvolvimento está completo e operacional, com modelos treinados e avaliados para o segmento Seguro Novo Manual.
+
+---
+
+## 1) Desafio e Solução
 
 ### Desafio
-- Necessidade de abordagem data-driven para priorização de cotações de maior potencial de aprovação
-- Limitação de operação do time comercial AXA
+- O time comercial opera com capacidade limitada: não é possível trabalhar todas as cotações com a mesma intensidade.
+- Sem priorização estruturada, o esforço pode ser distribuído de forma subótima — atendendo cotações com baixa chance de conversão enquanto oportunidades melhores ficam em segundo plano.
 
 ### Solução
-- Desenvolvimento (Databricks + MLflow) de sistema de rankeamento de cotações - transparente, observável e escalável
-- O desenvolvimento descrito (a nível de aplicação/objetivo, modelos, fluxo, análises) pode e deve sofrer alterações a partir de interações com área executiva e time comercial. Hoje, o pipeline contempla modelos tradicionais de classificação (simples e interpretáveis). 
+- O ISA classifica as cotações por probabilidade de conversão (emissão de apólice), gerando um ranking que orienta a atuação do time comercial.
+- O sistema é desenvolvido de forma iterativa: cada versão é treinada, avaliada e comparada com versões anteriores antes de qualquer mudança operacional. Isso garante que evoluções sejam embasadas em dados.
+- A estrutura é flexível: novos modelos, segmentos ou critérios de avaliação podem ser incorporados sem redesenho da solução.
 
-#### Diagrama pipelines de treinamento e inferência:
-![alt text](image.png)
+### Como funciona para o time comercial
+O output do sistema é uma **lista de cotações ordenada por score** — da maior para a menor probabilidade de conversão. O time trabalha de cima para baixo, priorizando automaticamente as oportunidades mais promissoras dentro da capacidade do dia.
 
-- Pipeline de treinamento + observabilidade via MLflow (já implementado)
-    - Contempla logging de etapas desde a ingestão dos dados no ambiente Databricks até pré-processamento/regras de negócio aplicadas, treinamento e análise de performance e resultados. Esta abordagem possibilita desenvolver e comparar modelagens com transparência e velocidade, além de monitorar o comportamento dos modelos com dados reais. Hoje, a equipe AXA tem acesso ao ambiente Databricks para consulta do desenvolvimento (psw-databricks-axa).
-- Pipeline de inferência/distribuição + observabilidade via MLflow (pendente implementação)
+O sistema não substitui o julgamento comercial — ele estrutura a fila de trabalho com base em evidências históricas.
 
-A partir de iterações através de agendas pontuais, os resultados disponibilizados nas execuções do pipeline podem ser acoplados aos feedbacks recebidos dos usuários, de modo a direcionar próximos testes/versões.
+---
 
-#### Segmentações
-- Hoje, existem 4 segmentações
-    - SEGURO_NOVO_DIGITAL
-    - SEGURO_NOVO_MANUAL
-    - RENOVACAO_DIGITAL
-    - RENOVACAO_MANUAL
-- Idealmente, é desenvolvido um modelo por segmentações, podendo ser criados mais modelos (estratificados por produtos, por exemplo), acomodados na estrutura já criada, que confere velocidade de desenvolvimento e observabilidade para AXA.
+## 2) Metodologia (em linguagem de negócio)
 
-## Etapa atual
-- Pipeline completo de treino operacional documentado no MLflow (ingestão → pré-processamento → modelo → scoring → comparação).
-- Teste preliminares do pipeline e estrutura MLflow para segmentação SEGURO_NOVO_MANUAL, com análises de resultados já disponíveis
+O sistema aprende a partir do **histórico de cotações com desfecho conhecido** — cotações que já resultaram em emissão de apólice ou em perda. Com esses dados, ele identifica padrões que diferenciam os dois grupos.
 
-## Possibilidade de direcionamento
-- Treinamento preliminar das demais segmentações (seguindo estratificação atual já mencionada)
-- Definir e executar testes variando pré-processamento e parâmetros de treino -> Avaliação de relatórios de performance -> Nova iteração com área de negócio para direcionamento
-- Desenvolvimento do pipeline de produção (Ingestão e tratamento dos dados submetidos à inferência de modelos treinados) -> Aprimorar arquitetura da solução e coletar feedbacks dos usuários de forma iterativa
-- Análise de capacidade operacional para direcionar desenvolvimento
-- Definição, caso necessário, de novas formas de análise
+A avaliação leva em conta dois objetivos simultâneos:
+- **Eficácia dentro da capacidade do time**: das N cotações que o time consegue trabalhar por dia, quantas são realmente convertíveis? O sistema tenta maximizar esse aproveitamento.
+- **Qualidade geral do modelo**: o sistema também deve distinguir bem emissões de perdas no universo completo, não apenas no topo da lista.
 
+Para garantir transparência e comparabilidade, múltiplas configurações de modelo são testadas lado a lado. Cada execução é rastreada com métricas, artefatos e parâmetros registrados — permitindo que qualquer resultado seja reproduzido ou auditado.
 
+### Segmentações
+O modelo é desenvolvido separadamente por segmento de negócio, respeitando as diferenças de comportamento entre eles:
+
+| Segmento | Status |
+|---|---|
+| Seguro Novo Manual | Treinado e avaliado (em andamento — versões V9.0.0 e V10.0.0) |
+| Seguro Novo Digital | Pendente |
+| Renovação Manual | Pendente |
+| Renovação Digital | Pendente |
+
+A estrutura já construída permite adicionar os demais segmentos sem retrabalho arquitetural. É possível ainda estratificar por produto dentro de cada segmento, acomodado na mesma estrutura.
+
+---
+
+## 3) Estado atual
+
+- **Pipeline completo de treinamento operacional**: ingestão de dados → aplicação de regras de negócio → treinamento de modelos → scoring → comparação de versões. Cada etapa é rastreada e documentada automaticamente, com acesso disponível via Databricks.
+- **Segmento Seguro Novo Manual**: múltiplas versões de modelo treinadas e avaliadas (V9.0.0, V10.0.0), com resultados comparativos disponíveis para análise — incluindo performance ajustada para rankeamento (top-K) e classificação geral.
+- **Rastreabilidade total**: cada execução registra quais dados foram usados, quais regras foram aplicadas, quais métricas foram obtidas e quais modelos foram gerados — garantindo reprodutibilidade e auditabilidade.
+- **Pipeline de produção (inferência sobre cotações sem desfecho)**: pendente de implementação. É a etapa que viabilizará o uso operacional do sistema pelo time comercial.
+
+A partir de interações com a área executiva e o time comercial, escopo, critérios de avaliação e segmentações podem ser ajustados iterativamente.
+
+---
+
+## 4) Próximos passos
+
+| Ação | Objetivo |
+|---|---|
+| Análise de capacidade operacional do time | Calibrar o sistema com o volume real de cotações trabalhadas por período — esse dado é central para a avaliação de performance |
+| Treinar e avaliar os demais segmentos | Ampliar cobertura para o universo completo de cotações |
+| Implementar pipeline de produção | Habilitar o uso operacional: score de cotações sem desfecho conhecido e distribuição para o time |
+| Iterações com área de negócio | Incorporar feedbacks dos usuários para direcionar próximas versões |
+
+### O que é necessário do lado AXA
+- **Capacidade operacional do time**: quantas cotações por segmento o time consegue trabalhar por período (dia/semana). Esse número calibra diretamente a avaliação do modelo — sem ele, não é possível medir se o sistema está gerando valor real.
+- **Acesso a cotações em aberto**: dados de cotações sem desfecho conhecido, necessários para o pipeline de produção (inferência operacional).
