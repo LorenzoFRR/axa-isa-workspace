@@ -54,11 +54,11 @@ TS_EXEC = datetime.now(ZoneInfo("America/Sao_Paulo")).strftime("%Y%m%d_%H%M%S")
 # Inputs (bronze) — DEFINIR MANUALMENTE
 # =========================
 # Fato: você aponta manualmente qual tabela versionada quer usar
-BRONZE_FACT_FQN = "bronze.cotacao_generico_20260310_143820"  # <<< AJUSTE
+BRONZE_FACT_FQN = "bronze.cotacao_generico_20260318_110703"  # <<< AJUSTE
 
 # Dimensões (nome fixo no bronze)
-BRONZE_CORRETOR_RESUMO_FQN  = "bronze.corretor_resumo"
-BRONZE_CORRETOR_DETALHE_FQN = "bronze.corretor_detalhe"
+BRONZE_CORRETOR_RESUMO_FQN  = "bronze.corretor_resumo_carga_1703"
+BRONZE_CORRETOR_DETALHE_FQN = "bronze.corretor_detalhe_carga_1703"
 
 # =========================
 # Outputs (silver) — versionados por execução
@@ -169,6 +169,35 @@ def drop_all_null_or_blank_columns(df: DataFrame) -> DataFrame:
     flags = df.agg(*exprs).collect()[0].asDict()
     keep = [c for c in df.columns if flags.get(c, 1) == 1]  # default keep
     return df.select(*keep)
+
+def auto_cast_numeric_cols(df: DataFrame) -> DataFrame:
+    """
+    Detecta e faz cast automático de colunas STRING que contêm apenas
+    valores numéricos (inteiros ou decimais). Uma única ação Spark.
+    Colunas com conteúdo textual real são mantidas como STRING.
+    Tenta long primeiro; se falhar, tenta double.
+    """
+    string_cols = [f.name for f in df.schema.fields if f.dataType.simpleString() == "string"]
+    if not string_cols:
+        return df
+
+    agg_exprs = []
+    for c in string_cols:
+        non_null = F.col(c).isNotNull() & (F.trim(F.col(c)) != "")
+        agg_exprs += [
+            F.count(F.when(non_null & F.col(c).cast("long").isNull(),   True)).alias(f"{c}__long_fail"),
+            F.count(F.when(non_null & F.col(c).cast("double").isNull(), True)).alias(f"{c}__dbl_fail"),
+        ]
+
+    stats = df.agg(*agg_exprs).collect()[0].asDict()
+
+    for c in string_cols:
+        if stats[f"{c}__long_fail"] == 0:
+            df = df.withColumn(c, F.col(c).cast("long"))
+        elif stats[f"{c}__dbl_fail"] == 0:
+            df = df.withColumn(c, F.col(c).cast("double"))
+
+    return df
 
 
 # =========================
@@ -558,13 +587,13 @@ def GEN_R10_filtra_status_finais(df: DataFrame) -> DataFrame:
     return df.filter(F.col("DS_GRUPO_STATUS").isin(["Emitida", "Perdida"]))
 
 def GEN_R11_cria_label(df: DataFrame) -> DataFrame:
-    # Cria coluna `label`: Emitida=1.0, Perdida=0.0, demais=NULL.
+    # Cria coluna `label`: Emitida=1, Perdida=0, demais=NULL.
     # Movida de PP_R03 (3_ML_TREINO_MODE_B_1).
     return df.withColumn(
         "label",
-        F.when(F.col("DS_GRUPO_STATUS") == "Emitida", F.lit(1.0))
-         .when(F.col("DS_GRUPO_STATUS") == "Perdida", F.lit(0.0))
-         .otherwise(F.lit(None).cast("double"))
+        F.when(F.col("DS_GRUPO_STATUS") == "Emitida", F.lit(1))
+         .when(F.col("DS_GRUPO_STATUS") == "Perdida", F.lit(0))
+         .otherwise(F.lit(None).cast("int"))
     )
 
 def GEN_R12_cria_mes(df: DataFrame) -> DataFrame:
@@ -725,7 +754,7 @@ RULES_BY_TABLE = {
         rule_def("GEN_R10", "Filtrar apenas cotações com desfecho conhecido (Emitida ou Perdida)",
                  GEN_R10_filtra_status_finais, enabled=True,
                  requires_columns=["DS_GRUPO_STATUS"]),
-        rule_def("GEN_R11", "Criar coluna label (Emitida=1.0, Perdida=0.0)",
+        rule_def("GEN_R11", "Criar coluna label (Emitida=1, Perdida=0) como INT",
                  GEN_R11_cria_label, enabled=True,
                  requires_columns=["DS_GRUPO_STATUS"]),
         rule_def("GEN_R12", "Criar coluna MES=yyyy-MM a partir de DATA_COTACAO; remove linhas com DATA_COTACAO nula",
@@ -856,6 +885,7 @@ with pr_ctx as pr:
         # 1) cotacao_generico
         # -------------------------
         df_fact_in = spark.table(BRONZE_FACT_FQN)
+        df_fact_in = auto_cast_numeric_cols(df_fact_in)
         cols_in_fact = df_fact_in.columns
         n_in_fact = df_fact_in.count()
 
@@ -880,6 +910,7 @@ with pr_ctx as pr:
         # 2) corretor_resumo
         # -------------------------
         df_res_in = spark.table(BRONZE_CORRETOR_RESUMO_FQN)
+        df_res_in = auto_cast_numeric_cols(df_res_in)
         cols_in_res = df_res_in.columns
         n_in_res = df_res_in.count()
 
@@ -904,6 +935,7 @@ with pr_ctx as pr:
         # 3) corretor_detalhe
         # -------------------------
         df_det_in = spark.table(BRONZE_CORRETOR_DETALHE_FQN)
+        df_det_in = auto_cast_numeric_cols(df_det_in)
         cols_in_det = df_det_in.columns
         n_in_det = df_det_in.count()
 

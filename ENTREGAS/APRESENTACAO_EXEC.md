@@ -4,10 +4,10 @@
 # 1 - Desafio e Solução - Abordagem que tem sido tomada pelo time de desenvolvimento da PSW
 
 ## Desafio interpretado
-- Necessidade de abordagem data-driven para priorização de cotações de maior potencial de aprovação
+- Necessidade de sistema para priorização de cotações de maior potencial de aprovação
 - Limitação de operação do time comercial
 
-## Solução (já implementada, à espera de testes e feedbacks da área comercial e usuários)
+## O que foi desenvolvido (já implementado, à espera de testes e feedbacks da área comercial e usuários)
 - Sistema transparente, observável e escalável de rankeamento de cotações implementado no ambiente Databricks
 
 💡 Inserir diagrama de fluxo simplificado

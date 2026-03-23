@@ -687,6 +687,32 @@ with mlflow.start_run(**_pp_kw, nested=True) as pp_container:
             rules_catalog_for_logging({"rules_feature_prep": RULES_FEATURE_PREP}),
             "preproc_feature/rules_feature_prep_catalog.json",
         )
+        _fp_desc = {r["rule_id"]: r["description"] for r in RULES_FEATURE_PREP}
+        mlflow.log_dict(
+            [
+                {
+                    "rule_id": "PP_R04",
+                    "description": _fp_desc["PP_R04"],
+                    "status": exec_log["PP_R04"]["status"],
+                    "null_profile": null_profile_pp,
+                    "drop_null_cols": drop_null_cols_pp,
+                },
+                {
+                    "rule_id": "PP_R05",
+                    "description": _fp_desc["PP_R05"],
+                    "status": exec_log["PP_R05"]["status"],
+                    "high_card_cols": high_card_cols_pp,
+                    "top_vals_by_col": top_vals_by_col_prep,
+                },
+                {
+                    "rule_id": "PP_R06",
+                    "description": _fp_desc["PP_R06"],
+                    "status": exec_log["PP_R06"]["status"],
+                    "drop_constant_cols": drop_const_cols_pp,
+                },
+            ],
+            "preproc_feature/rules_feature_prep.json",
+        )
         mlflow.log_dict(exec_log, "rules_execution.json")
 
         n_model = int(df_model_tmp.count())
@@ -738,6 +764,7 @@ from pyspark.ml.evaluation import BinaryClassificationEvaluator
 from pyspark.ml.functions import vector_to_array
 
 from sklearn.feature_selection import mutual_info_classif
+from sklearn.metrics import average_precision_score, precision_recall_curve
 
 
 def truncate_high_cardinality(df: DataFrame, col_name: str, top_n: int, outros: str = "OUTROS") -> DataFrame:
@@ -1248,6 +1275,57 @@ with mlflow.start_run(**_fs_kw, nested=True) as fs_container:
 
 # COMMAND ----------
 
+# # Chave do feature set gerado pelo FS — deve existir em FS_FEATURE_SETS
+# TREINO_FEATURE_SET_KEY = "top_7"  # <<< AJUSTE
+
+# # Features que entram no modelo independentemente do top-K selecionado pelo FS.
+# # Devem estar habilitadas (True) em FEATURE_CANDIDATES.
+# TREINO_FEATURES_PINNED = ['DIAS_VALIDADE', 'QTD_COTACAO_2025_detalhe', 'QTD_EMITIDO_2025_detalhe', 'HR_2025_detalhe']
+
+# # Class weight
+# USE_CLASS_WEIGHT       = "auto"   # "auto" | True | False
+# CLASS_WEIGHT_THRESHOLD = 0.30
+
+# # CV + grid
+# CV_FOLDS  = 2
+# CV_SEED   = 42
+# CV_METRIC = "areaUnderPR"
+
+# # Grid de hiperparâmetros
+# GBT_PARAM_GRID = {
+#     "maxDepth": [4, 6],
+#     "stepSize": [0.1, 0.05],
+#     "maxIter":  200,
+# }
+
+# # Eval — critério de seleção de τ na curva PR
+# # "max_f1"              → τ que maximiza F1 (equilíbrio precision/recall)
+# # "max_f2"              → τ que maximiza F2 (peso duplo no recall)
+# # "precision_ge_target" → maior recall com precision >= EVAL_PRECISION_TARGET
+# EVAL_CRITERION        = "max_f1"
+# EVAL_PRECISION_TARGET = 0.4   # usado apenas quando EVAL_CRITERION = "precision_ge_target"
+
+# ID_COLS            = [ID_COL, "CD_DOC_CORRETOR", "TS_ARQ", SEG_COL, DATE_COL]
+# DROP_FROM_FEATURES = ID_COLS + [STATUS_COL]
+
+# _topk_cols      = FS_FEATURE_SETS[TREINO_FEATURE_SET_KEY]
+# _pinned_valid   = [c for c in TREINO_FEATURES_PINNED if c in FS_CAT_COLS + FS_NUM_COLS]
+# _pinned_invalid = [c for c in TREINO_FEATURES_PINNED if c not in FS_CAT_COLS + FS_NUM_COLS]
+# if _pinned_invalid:
+#     print(f"⚠️  TREINO_FEATURES_PINNED ignoradas (não habilitadas em FEATURE_CANDIDATES): {_pinned_invalid}")
+# # União deduplicada: top-K primeiro, pinned adicionadas ao final se ausentes
+# TREINO_FEATURE_COLS = list(dict.fromkeys(_topk_cols + _pinned_valid))
+
+# print("✅ T_TREINO inputs:")
+# print("• df_model_fqn :", DF_MODEL_FQN)
+# print("• df_valid_fqn :", DF_VALID_FQN)
+# print("• feature_set  :", TREINO_FEATURE_SET_KEY, "→", TREINO_FEATURE_COLS)
+# print("• use_cw       :", USE_CLASS_WEIGHT, "| threshold:", CLASS_WEIGHT_THRESHOLD)
+# print("• cv_folds     :", CV_FOLDS, "| cv_seed:", CV_SEED)
+# print("• param_grid   :", GBT_PARAM_GRID)
+
+# COMMAND ----------
+
 # Chave do feature set gerado pelo FS — deve existir em FS_FEATURE_SETS
 TREINO_FEATURE_SET_KEY = "top_7"  # <<< AJUSTE
 
@@ -1690,9 +1768,17 @@ with mlflow.start_run(**_tr_kw, nested=True) as treino_container:
             mlflow.spark.log_model(pp_final_fit, artifact_path=f"treino_final/{model_id}/preprocess_pipeline")
 
             # AUC-PR e AP de treino (para análise de overfitting no 5_COMP)
-            df_model_pred  = gbt_model.transform(df_model_vec)
-            auc_pr_treino  = float(evaluator_pr.evaluate(df_model_pred))
-            ap_treino      = compute_ap(df_model_pred, label_col=LABEL_COL)
+            # Usa mesmo método do 5_COMP (sklearn) para garantir comparação consistente.
+            df_model_pred = gbt_model.transform(df_model_vec)
+            _pdf_tr       = (
+                df_model_pred
+                .select(LABEL_COL, vector_to_array(F.col("probability")).getItem(1).alias("_p1"))
+                .toPandas()
+            )
+            _y_tr, _s_tr          = _pdf_tr[LABEL_COL].astype(int).values, _pdf_tr["_p1"].astype(float).values
+            _prec_tr, _rec_tr, _  = precision_recall_curve(_y_tr, _s_tr)
+            auc_pr_treino         = float(np.trapz(_prec_tr[::-1], _rec_tr[::-1]))
+            ap_treino             = float(average_precision_score(_y_tr, _s_tr))
 
             mlflow.log_metrics({
                 f"auc_pr_treino_{model_id}": auc_pr_treino,
@@ -1756,7 +1842,7 @@ with mlflow.start_run(**_tr_kw, nested=True) as treino_container:
             eval_results[model_id] = {
                 "model_id":  model_id,
                 "criterion": EVAL_CRITERION,
-                "threshold": tau_row["threshold"],
+                "threshold": float(tau_row["threshold"]),
                 "precision": round(tau_row["precision"], 4),
                 "recall":    round(tau_row["recall"],    4),
                 "f1":        round(tau_row["f1"],        4),

@@ -15,7 +15,7 @@ EXPERIMENT_NAME = "/Workspace/Users/psw.service@pswdigital.com.br/TESTE_ML_NOVO/
 
 PR_INF_NAME = "T_PR_INFERENCIA"
 MODE_CODE   = "C"
-INF_VERSAO  = "V9.0.0"
+INF_VERSAO  = "V10.0.0"
 VERSAO_REF  = INF_VERSAO
 
 TS_EXEC    = datetime.now(ZoneInfo("America/Sao_Paulo")).strftime("%Y%m%d_%H%M%S")
@@ -31,7 +31,7 @@ PR_INF_RUN_ID_OVERRIDE = "e7af2dc5cb8b45c194656889f4b28fd2"
 # REFERÊNCIA AO TREINO
 # =========================
 # run_id do exec run T_TREINO (run_role=exec, step=TREINO) — impresso no final do 3_TREINO_MODE_C
-TREINO_EXEC_RUN_ID = "a53ffb7f8ad647cd97dd704cbaf0b50f"   # <<< OBRIGATÓRIO
+TREINO_EXEC_RUN_ID = "1c516039c9af476397d28a8cddd99674"   # <<< OBRIGATÓRIO
 
 # =========================
 # MODELOS A INFERIR
@@ -66,7 +66,7 @@ OUTROS_LABEL = "OUTROS"   # constante usada na truncagem; deve coincidir com o t
 # INPUT / OUTPUT
 # =========================
 # df_validacao gerado pelo 3_TREINO_MODE_C (logado como param 'df_validacao_fqn')
-INPUT_TABLE_FQN = "gold.cotacao_validacao_20260316_203342_656cd854"   # <<< AJUSTE
+INPUT_TABLE_FQN = "gold.cotacao_validacao_20260319_195931_cdc3278a"   # <<< AJUSTE
 
 OUT_SCHEMA       = "gold"
 OUTPUT_TABLE_FQN = f"{OUT_SCHEMA}.cotacao_inferencia_mode_{MODE_CODE.lower()}_{SEG_SLUG}_{TS_EXEC}"
@@ -312,8 +312,12 @@ df_inf_prep = blanks_to_null(df_seg, treino_cat_cols)
 df_inf_prep = cast_to_double(df_inf_prep, treino_num_cols)
 
 # Truncagem de cardinalidade com top_vals do treino
+# Skipa colunas numéricas: QTD_* e similares chegam como string no schema da tabela
+# e são classificadas como cat em T_PRE_PROC_MODEL, mas em T_TREINO são castadas para
+# double e entram em treino_num_cols. Aplicar apply_truncation nelas reconverteria de
+# double para string (F.lit("OUTROS")), quebrando pp_fit.transform().
 for c, top_vals in top_vals_by_col.items():
-    if c in df_inf_prep.columns:
+    if c in df_inf_prep.columns and c not in treino_num_cols:
         df_inf_prep = apply_truncation(df_inf_prep, c, top_vals, OUTROS_LABEL)
 
 # Selecionar colunas relevantes para o scoring

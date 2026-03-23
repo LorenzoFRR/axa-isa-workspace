@@ -1,7 +1,5 @@
 # Resumo Executivo — Intelligent Score Agent (ISA) | AXA
 
-O ISA é um sistema que aprende com o histórico de cotações e as ordena por probabilidade de conversão, permitindo que o time comercial concentre seu esforço nos clientes com maior potencial — dentro da capacidade operacional existente. Hoje, o pipeline de desenvolvimento está completo e operacional, com modelos treinados e avaliados para o segmento Seguro Novo Manual.
-
 ---
 
 ## 1) Desafio e Solução
