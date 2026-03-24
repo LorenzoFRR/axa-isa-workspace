@@ -15,10 +15,6 @@ git push
 
 ####################################################################
 
-# Integrações / Otimização desenvolvimento
-- [ ] Integração Claude/Databricks
-- [ ] Integração git 🔴
-
 # Tópicos 
 ## Databricks
 - Spark Declarative Pipelines
@@ -31,6 +27,12 @@ git push
 - Ralph Loops
 - AI agents autoresearch (https://github.com/karpathy/autoresearch)
 - Plugin Superpowers
+
+####################################################################
+
+# Integrações / Otimização desenvolvimento
+- [ ] Integração Claude/Databricks
+- [ ] Integração versionamento ISA_DEV git 🔴
 
 # Documentação
 - [ ] Gerar documentação automatizada a partir dos notebooks (ex: via nbconvert)
@@ -45,22 +47,28 @@ git push
 ####################################################################
 
 # Direcionamentos Gerais
-- [ ] Fazer ingestão completa para desenvolvimento
-- [ ] Ver com Kimura como fica atualização dos dados de corretor quando tivermos pipeline de produção 🔴
-
-## Definição desenvolvimento 16/03
+- [ ] Avaliar necessidade análise capacidade operacional
 - [STDBY] Criar modelos abrindo além de SEG_NOVO/RENOVACAO/MANUAL/DIGITAL
 - [ ] Treinar modelos com novas abordagens 
-  - [ ] Utilizar dados de corretor atualizados (TODAS SEGMENTACOES) 🔴
-  - [ ] Utilizar classificação, removendo HR, QTDs (TODAS SEGMENTACOES) 🔵
+  - [STDBY] Utilizar classificação, removendo HR, QTDs (TODAS SEGMENTACOES)
   - [STDBY] Utilizar clusterização
-- [ ] Avaliar necessidade análise capacidade operacional 🔴
-
-## Definição direcionamento paralelo
-- [ ] Criar resumo desenvolvimento 🔴
-- [ ] Criar apresentação desenvolvimento
 - [ ] Ver materiais Fabiano 🔴
-- [ ] Ver ferramenta de fluxograma 🔴
+- [STDBY] Ver treinamento assumindo peso para features a partir de FS
+
+## Definição desenvolvimento 23/03
+- [ ] Desenvolver lógica de report automático
+- [ ] Desenvolver diagramas pipeline
+- [ ] Análise de resultados
+  - [ ] Desenvolver análise de resultados mais próxima do negócio -> relacionar com esforço do time comercial
+  - [ ] Estratificar análises por linha de produto
+- [ ] Executar pipeline para demais segmentações
+- [ ] Desenvolver pipeline de distribuição
+  - Executar e distribuir inferência com dados jan/fev 2026?
+  - Criar pipeline geral
+  - Entender como fica a métrica para a distribuição (talvez ranking puro não sirva)
+
+
+
 
 ## Possibilidades de direcionamento
 - [ ] Explorar novos modelos
