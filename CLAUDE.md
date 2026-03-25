@@ -24,6 +24,31 @@ Dois pipelines previstos:
 
 ---
 
+## Estrutura de Pastas
+
+```
+workspace_databricks/
+├── CLAUDE.md                   # Este documento — guia estrutural do projeto
+├── ISA_DEV/                    # Pipeline principal (notebooks .py)
+│   ├── 0_INGESTAO.py
+│   ├── 1_PRE_PROC.py
+│   ├── 2_JOIN.py
+│   ├── 3_TREINO_MODE_C.py
+│   ├── 4_INFERENCIA_MODE_C.py
+│   └── 5_COMP_MODE_C.py
+├── DOCUMENTOS/                 # Documentação do projeto
+│   ├── BACKLOG.md
+│   ├── LINEAGE_TABELAS_MANUAL.md
+│   └── REFS_MODELAGEM.md
+├── DIAGRAMAS/                  # Diagramas de arquitetura (.drawio)
+│   ├── PIPELINE_OVERVIEW_v1.drawio
+│   └── PIPELINE_OVERVIEW_v2.drawio
+└── ENTREGAS/                   # Entregáveis (PDFs, apresentações)
+    └── resumo_dev_AXA_2003.pdf
+```
+
+---
+
 ## Pipeline (ISA_DEV/)
 Notebooks `.py` em formato Databricks, executados em ordem:
 
@@ -32,11 +57,27 @@ Notebooks `.py` em formato Databricks, executados em ordem:
 | `0_INGESTAO.py` | Ingestão bronze | `T_PR_INGESTAO` |
 | `1_PRE_PROC.py` | Pré-proc + feature eng + label | `T_PR_PRE_PROC` |
 | `2_JOIN.py` | Join fato + dimensões → silver | `T_PR_JOIN` |
-| `3_TREINO_MODE_*.py` | Treinamento (um notebook por mode) | `T_PR_TREINO` |
-| `4_INFERENCIA_MODE_*.py` | Inferência/scoring | `T_PR_INFERENCIA` |
-| `5_COMP_MODE_*.py` | Comparação de modelos | `T_PR_COMP` |
+| `3_TREINO_MODE_C.py` | Treinamento (Mode C) | `T_PR_TREINO` |
+| `4_INFERENCIA_MODE_C.py` | Inferência/scoring | `T_PR_INFERENCIA` |
+| `5_COMP_MODE_C.py` | Comparação de modelos | `T_PR_COMP` |
 
-**Variantes MODE**: existe um notebook por mode (`MODE_A`, `MODE_B`, `MODE_C`) para `3_TREINO`, `4_INFERENCIA` e `5_COMP`. Cada mode tem sua própria abordagem de pré-processamento e modelagem — não compartilham código entre si.
+**Mode ativo: MODE_C** — único mode implementado atualmente. Notebooks `3_TREINO`, `4_INFERENCIA` e `5_COMP` são específicos do MODE_C. Caso novos modes sejam criados (MODE_A, MODE_B, etc.), cada um terá seus próprios notebooks para essas etapas.
+
+**Fluxo de dados:**
+```
+0_INGESTAO → bronze.cotacao_generico_{TS}
+1_PRE_PROC → silver.cotacao_generico_clean_{TS}
+2_JOIN     → silver.cotacao_seg_{TS}
+3_TREINO   → gold.cotacao_model_{TS}_{UUID}, gold.cotacao_validacao_{TS}_{UUID}
+4_INFERENCIA → gold.cotacao_inferencia_mode_c_{SEG_SLUG}_{TS}
+5_COMP     → Análise e comparação (sem output de tabela)
+```
+
+**Segmentações em execução:**
+- `SEGURO_NOVO_MANUAL` — segmentação principal
+- `RENOVACAO_MANUAL` — em teste
+- `SEGURO_NOVO_DIGITAL` — pendente
+- `RENOVACAO_DIGITAL` — pendente
 
 **MLflow experiment** (único para todo o pipeline):
 ```
@@ -52,6 +93,7 @@ Versões antigas: `ISA_DEV (versoes antigas)/` — consultar só se necessário.
 - **Novo notebook derivado de outro** (quando solicitado pelo usuário): adicionar sufixo numérico no novo (`CODIGO_2.py`). O original não é alterado.
 - Não existe CHANGELOG.
 - **Padrão de execução**: params são alterados diretamente nas células de Config do notebook a cada execução — não se cria um novo notebook para testar combinações diferentes de parâmetros.
+- **Versionamento semântico** nos notebooks de treino/inferência/comparação (ex: V10.0.0).
 
 ---
 
@@ -116,10 +158,8 @@ Complementar com `profiling/ts_arq_contagem.png` quando aplicável.
 ## Documentação
 | Arquivo | Uso |
 |---|---|
-| `docs/BACKLOG.md` | Tarefas e pendências — atualizar conforme avanço |
-| `docs/ANALISE_BASE.md` | Análise dos dados (paralela ao desenvolvimento) |
-| `docs/ARQ_MODELO.md` | Schemas de colunas e anotações para guiar novas abordagens de modelagem |
-| `docs/LINEAGE_TABELAS_MANUAL.md` | Lineage de tabelas — mantido manualmente, não editar |
-| `docs/REFS_MODELAGEM.md` | Referências técnicas de modelagem — somente leitura |
-| `docs/PLANO_MODELAGEM_MODE_C.md` | Plano de modelagem MODE_C — decisões arquiteturais do mode ativo |
-| `entregas/PONTUAIS.md` | Entregáveis com prazo |
+| `DOCUMENTOS/BACKLOG.md` | Tarefas e pendências — atualizar conforme avanço |
+| `DOCUMENTOS/LINEAGE_TABELAS_MANUAL.md` | Lineage de tabelas — mantido manualmente, não editar |
+| `DOCUMENTOS/REFS_MODELAGEM.md` | Referências técnicas de modelagem — somente leitura |
+| `DIAGRAMAS/PIPELINE_OVERVIEW_v2.drawio` | Diagrama principal do pipeline (draw.io) |
+| `ENTREGAS/resumo_dev_AXA_2003.pdf` | Resumo de desenvolvimento entregue |

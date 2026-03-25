@@ -16,11 +16,11 @@ git push
 Ícone direcionamento já mapeado na seção correspondente: 🔵
 
 # Definição desenvolvimento 23/03
-- Criar análises resultados orientada a decisões 🔵
+- Criar análises resultados orientada a decisões 🔵 !
 - Executar pipeline para demais segmentações 🔵
-- Montar pipeline distribuição 🔵
+- Montar pipeline distribuição 🔵 !
 - Direcionar discussão Fabiano 🔵
-- Iniciar desenvolvimento V11 🔵
+- Iniciar desenvolvimento V11 🔵 !
 
 # Mapeamento desenvolvimento [STDBY]
 - Avaliar necessidade análise capacidade operacional
@@ -46,7 +46,7 @@ git push
 - [ ] Revisar CLAUDE.md
 - [ ] Executar pipeline para demais segmentações 🔴
   - [x] SEGURO_NOVO_MANUAL
-  - [ ] RENOVACAO_MANUAL - deixei treinando 24/03
+  - [x] RENOVACAO_MANUAL
   - [ ] SEGURO_NOVO_DIGITAL
   - [ ] RENOVACAO_DIGITAL
 - [ ] Montar pipeline de distribuição 🔴
