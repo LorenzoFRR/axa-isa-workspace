@@ -47,7 +47,7 @@ git push
 - [ ] Executar pipeline para demais segmentações 🔴
   - [x] SEGURO_NOVO_MANUAL
   - [x] RENOVACAO_MANUAL
-  - [ ] SEGURO_NOVO_DIGITAL
+  - [x] SEGURO_NOVO_DIGITAL
   - [ ] RENOVACAO_DIGITAL
 - [ ] Montar pipeline de distribuição 🔴
 - [ ] Direcionar discussão Fabiano 🔴
@@ -57,6 +57,9 @@ git push
   - https://www.youtube.com/watch?v=KoFOPpUWi98&t=1526s
   - Materiais ingestão pipeline distribuição/inferência
 - [ ] Iniciar desenvolvimento V11 🔴
+  - [x] Criar documento ANALISE_V11.md com plano de análise exploratória CLF_CORRETOR
+  - [ ] Executar análise exploratória (distribuições, correlações, thresholds, MI)
+  - [ ] Decidir viabilidade e integração ao pipeline
 
 ## 0_INGESTAO
 - [ ] Re-avaliar nomenclatura tabelas de corretor

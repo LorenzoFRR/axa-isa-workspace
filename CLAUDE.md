@@ -161,5 +161,6 @@ Complementar com `profiling/ts_arq_contagem.png` quando aplicável.
 | `DOCUMENTOS/BACKLOG.md` | Tarefas e pendências — atualizar conforme avanço |
 | `DOCUMENTOS/LINEAGE_TABELAS_MANUAL.md` | Lineage de tabelas — mantido manualmente, não editar |
 | `DOCUMENTOS/REFS_MODELAGEM.md` | Referências técnicas de modelagem — somente leitura |
+| `DOCUMENTOS/ANALISE_V11.md` | Análise exploratória CLF_CORRETOR (V11) — documento iterativo |
 | `DIAGRAMAS/PIPELINE_OVERVIEW_v2.drawio` | Diagrama principal do pipeline (draw.io) |
 | `ENTREGAS/resumo_dev_AXA_2003.pdf` | Resumo de desenvolvimento entregue |
