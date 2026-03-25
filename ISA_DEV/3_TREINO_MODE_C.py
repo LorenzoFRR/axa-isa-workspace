@@ -44,7 +44,7 @@ def run_name_vts(base: str) -> str:
 # =========================
 # INPUT
 # =========================
-COTACAO_SEG_FQN = "silver.cotacao_seg_20260318_112204"  # <<< AJUSTE
+COTACAO_SEG_FQN = "silver.cotacao_seg_20260323_102048"  # <<< AJUSTE
 
 # =========================
 # OUTPUT
@@ -72,7 +72,7 @@ DO_PROFILE = True
 # PRE_PROC_MODEL / FS — colunas e segmento
 # =========================
 # SEG_TARGET é usado no PRE_PROC_MODEL (logado como param) e reutilizado no FS e TREINO.
-SEG_TARGET = "SEGURO_NOVO_MANUAL"  # <<< AJUSTE
+SEG_TARGET = "RENOVACAO_MANUAL"  # <<< AJUSTE
 
 FS_SEEDS            = [42, 123, 7]
 FS_TRAIN_FRAC       = 0.70
@@ -102,16 +102,16 @@ FEATURE_CANDIDATES = {
     "CD_FILIAL_RESPONSAVEL_COTACAO":             True,   # string
     "DS_ATIVIDADE_SEGURADO":                     True,   # string
     "DS_GRUPO_CORRETOR_SEGMENTO":                False,   # string
-    "DIAS_ULTIMA_ATUALIZACAO":                   False,   # int
+    "DIAS_ULTIMA_ATUALIZACAO":                   True,   # int
     "DIAS_VALIDADE":                             True,   # int
     "DIAS_ANALISE_SUBSCRICAO":                   True,   # int
     "DIAS_FIM_ANALISE_SUBSCRICAO":               True,   # int
     "DIAS_COTACAO":                              True,   # int
     "DIAS_INICIO_VIGENCIA":                      True,   # int
-    "VL_GWP_CORRETOR_resumo":                    True,   # decimal(17,2)
-    "QTD_ACORDO_COMERCIAL_resumo":               True,   # string
-    "QTD_COTACAO_2025_detalhe":                  True,   # int → cast double
-    "QTD_EMITIDO_2025_detalhe":                  True,   # int → cast double
+    "VL_GWP_CORRETOR_resumo":                    False,   # decimal(17,2)
+    "QTD_ACORDO_COMERCIAL_resumo":               False,   # bigint
+    "QTD_COTACAO_2025_detalhe":                  True,   # bigint
+    "QTD_EMITIDO_2025_detalhe":                  True,   # bigint
     "HR_2025_detalhe":                           True,   # decimal(17,6)
 }
 
@@ -1275,57 +1275,6 @@ with mlflow.start_run(**_fs_kw, nested=True) as fs_container:
 
 # COMMAND ----------
 
-# # Chave do feature set gerado pelo FS — deve existir em FS_FEATURE_SETS
-# TREINO_FEATURE_SET_KEY = "top_7"  # <<< AJUSTE
-
-# # Features que entram no modelo independentemente do top-K selecionado pelo FS.
-# # Devem estar habilitadas (True) em FEATURE_CANDIDATES.
-# TREINO_FEATURES_PINNED = ['DIAS_VALIDADE', 'QTD_COTACAO_2025_detalhe', 'QTD_EMITIDO_2025_detalhe', 'HR_2025_detalhe']
-
-# # Class weight
-# USE_CLASS_WEIGHT       = "auto"   # "auto" | True | False
-# CLASS_WEIGHT_THRESHOLD = 0.30
-
-# # CV + grid
-# CV_FOLDS  = 2
-# CV_SEED   = 42
-# CV_METRIC = "areaUnderPR"
-
-# # Grid de hiperparâmetros
-# GBT_PARAM_GRID = {
-#     "maxDepth": [4, 6],
-#     "stepSize": [0.1, 0.05],
-#     "maxIter":  200,
-# }
-
-# # Eval — critério de seleção de τ na curva PR
-# # "max_f1"              → τ que maximiza F1 (equilíbrio precision/recall)
-# # "max_f2"              → τ que maximiza F2 (peso duplo no recall)
-# # "precision_ge_target" → maior recall com precision >= EVAL_PRECISION_TARGET
-# EVAL_CRITERION        = "max_f1"
-# EVAL_PRECISION_TARGET = 0.4   # usado apenas quando EVAL_CRITERION = "precision_ge_target"
-
-# ID_COLS            = [ID_COL, "CD_DOC_CORRETOR", "TS_ARQ", SEG_COL, DATE_COL]
-# DROP_FROM_FEATURES = ID_COLS + [STATUS_COL]
-
-# _topk_cols      = FS_FEATURE_SETS[TREINO_FEATURE_SET_KEY]
-# _pinned_valid   = [c for c in TREINO_FEATURES_PINNED if c in FS_CAT_COLS + FS_NUM_COLS]
-# _pinned_invalid = [c for c in TREINO_FEATURES_PINNED if c not in FS_CAT_COLS + FS_NUM_COLS]
-# if _pinned_invalid:
-#     print(f"⚠️  TREINO_FEATURES_PINNED ignoradas (não habilitadas em FEATURE_CANDIDATES): {_pinned_invalid}")
-# # União deduplicada: top-K primeiro, pinned adicionadas ao final se ausentes
-# TREINO_FEATURE_COLS = list(dict.fromkeys(_topk_cols + _pinned_valid))
-
-# print("✅ T_TREINO inputs:")
-# print("• df_model_fqn :", DF_MODEL_FQN)
-# print("• df_valid_fqn :", DF_VALID_FQN)
-# print("• feature_set  :", TREINO_FEATURE_SET_KEY, "→", TREINO_FEATURE_COLS)
-# print("• use_cw       :", USE_CLASS_WEIGHT, "| threshold:", CLASS_WEIGHT_THRESHOLD)
-# print("• cv_folds     :", CV_FOLDS, "| cv_seed:", CV_SEED)
-# print("• param_grid   :", GBT_PARAM_GRID)
-
-# COMMAND ----------
-
 # Chave do feature set gerado pelo FS — deve existir em FS_FEATURE_SETS
 TREINO_FEATURE_SET_KEY = "top_7"  # <<< AJUSTE
 
@@ -1700,7 +1649,7 @@ with mlflow.start_run(**_tr_kw, nested=True) as treino_container:
             for fold_i, (df_tr_vec, df_va_vec) in enumerate(folds_vec):
                 gbt = GBTClassifier(
                     featuresCol="features_vec", labelCol=LABEL_COL,
-                    weightCol="weight" if apply_cw else None,
+                    weightCol="weight",
                     maxDepth=combo["maxDepth"], stepSize=combo["stepSize"],
                     maxIter=combo["maxIter"], seed=CV_SEED,
                     subsamplingRate=0.8,
@@ -1755,7 +1704,7 @@ with mlflow.start_run(**_tr_kw, nested=True) as treino_container:
 
             gbt_final = GBTClassifier(
                 featuresCol="features_vec", labelCol=LABEL_COL,
-                weightCol="weight" if apply_cw else None,
+                weightCol="weight",
                 maxDepth=combo["maxDepth"], stepSize=combo["stepSize"],
                 maxIter=GBT_MAXITER_FINAL, seed=CV_SEED,
                 subsamplingRate=0.8,
