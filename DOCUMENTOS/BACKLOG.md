@@ -49,8 +49,11 @@ OBS: Materiais de entregas estão no Confluence: https://pswdigital.atlassian.ne
 - [ ] Pipeline distribuição 🔵
 - [ ] Desenvolvimento V11 🔵
   - [x] Criar documento ANALISE_V11.md com plano de análise exploratória CLF_CORRETOR
-  - [ ] Executar análise exploratória
-  - [ ] Decidir viabilidade e integração ao pipeline
+  - [x] Definir abordagem: K-Means sobre vetor (hr_mean, cotacao_mean, n_produtos) por corretor
+  - [x] Criar TESTE_CLUST_V11.py (notebook de exploração isolado)
+  - [ ] Executar TESTE_CLUST_V11.py e escolher K final
+  - [ ] Validar discriminação de label por cluster
+  - [ ] Decidir viabilidade e integração ao pipeline (PP_R08 em 3_TREINO_MODE_C.py)
 
 ## 0_INGESTAO
 - [ ] Re-avaliar nomenclatura tabelas de corretor
