@@ -18,8 +18,8 @@ OBS: Materiais de entregas estão no Confluence: https://pswdigital.atlassian.ne
 
 # Definição desenvolvimento 23/03
 - Pipeline demais segmentações 🔵
-- Pipeline distribuição 🔵 !
-- Desenvolvimento V11 🔵 !
+- Pipeline distribuição 🔵
+- Desenvolvimento V11 🔵
 
 # Mapeamento desenvolvimento [STDBY]
 - Avaliar necessidade análise capacidade operacional
@@ -43,17 +43,10 @@ OBS: Materiais de entregas estão no Confluence: https://pswdigital.atlassian.ne
 - [ ] Unity Catalog 🔴
 - [ ] Pipeline demais segmentações 🔵
   - [x] SEGURO_NOVO_MANUAL
-  - [ ] RENOVACAO_MANUAL
-  - [ ] SEGURO_NOVO_DIGITAL
+  - [ ] RENOVACAO_MANUAL - Em andamento 28/03
+  - [x] SEGURO_NOVO_DIGITAL
   - [ ] RENOVACAO_DIGITAL
 - [ ] Pipeline distribuição 🔵
-- [ ] Desenvolvimento V11 🔵
-  - [x] Criar documento ANALISE_V11.md com plano de análise exploratória CLF_CORRETOR
-  - [x] Definir abordagem: K-Means sobre vetor (hr_mean, cotacao_mean, n_produtos) por corretor
-  - [x] Criar TESTE_CLUST_V11.py (notebook de exploração isolado)
-  - [ ] Executar TESTE_CLUST_V11.py e escolher K final
-  - [ ] Validar discriminação de label por cluster
-  - [ ] Decidir viabilidade e integração ao pipeline (PP_R08 em 3_TREINO_MODE_C.py)
 
 ## 0_INGESTAO
 - [ ] Re-avaliar nomenclatura tabelas de corretor
@@ -69,14 +62,33 @@ OBS: Materiais de entregas estão no Confluence: https://pswdigital.atlassian.ne
 ## 0_INGESTAO
 
 ## 1_PRE_PROC
-- [x] Ajustar HR_2025 corretor_detalhe (bronze -> silver)
 
 ## 2_JOIN
-- [ ] Deu problema nas mesmas colunas de _detalhe. Ajustar
 
 ## 3_TREINO
 
   ## ETAPA PRE_PROC_MODEL
+  - [ ] Implementação Clustering (V11) 🔵
+    - Definir/entender dinâmica de seleção de parâmetros (EXPLORE, FIT?)
+    - Logar distribuições e remover outliers pra não distorcer clustering
+    - Ver como definir parâmetros de clustering (manual, automatizado?)
+    - [STDBY] Inserir variação de parâmetros de clustering em grid de treinamento (T_TREINO)?
+    - Logar, em rules, clustering como rule (toggle True, False pra aplicar clustering)
+    - Logar análises/visualizações clustering + Entender interpretação análises
+      - QTD corretor por cluster
+      - Elbow / Sillouette
+      - Heatmaps clusters
+      - Distribuições HR vs QTD cotações por corretor
+      - Distribuições HR vs QTD produtos por corretor
+      - Distribuições QTD cotações por corretor vs QTD produtos por corretor
+      - Tabela corretores típicos
+
+    - Utilizar mais colunas no clustering, além de DS_PRODUTO_NOME, QTD_EMITIDO (não utilizado por ora), QTD_COTACAO, HR, por CD_CORRETOR
+    - Implementar lógica de tal modo que os resultados da etapa possam ser referenciados em 5_COMP
+    - Implementar regra de limpeza de base antes de executar clustering (como isso funcionaria? clustering seria necessariamente após subetapa de limpeza, usando cotacao_seg)
+    - Definir análises executivas que podem ser realizadas a partir do resultado do clustering
+    - [x] Verificar criação CLF_CORRETOR em df_model e df_validacao. R: Criado, OK.
+    - [x] Dependendo do toggle de clusterizar por SEG, a tabela de cotacao_seg vem com SEG = todas. Verificar se isso acontece para MODE_C. R: Sim, cotacao_model/validacao vêm com SEG = todas.
 
   ## ETAPA FEATURE SELECTION
   - [ ] Métodos paralelos de Análise de Importância
@@ -99,6 +111,7 @@ OBS: Materiais de entregas estão no Confluence: https://pswdigital.atlassian.ne
 ## 5_COMP
 - [ ] Metrificar overfitting
 - [ ] Plotar MI + Methods Score
+- [ ] p_emitida por cluster
 
 ## 6_REPORT
 - [ ] Análise de resultados

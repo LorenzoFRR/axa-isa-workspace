@@ -12,42 +12,93 @@ Atualizar conforme o desenvolvimento avança.
 ## Visão geral do MODE_D
 
 MODE_D introduz `CLF_CORRETOR` como feature derivada por K-Means antes da etapa de treino.
-A lógica de preprocessing é idêntica ao MODE_C. A diferença está na adição de uma nova etapa — **T_CLUSTERING** — entre PRE_PROC_MODEL e as etapas futuras de FS e TREINO.
+A lógica de preprocessing é idêntica ao MODE_C. O clustering é uma etapa separada do PRE_PROC_MODEL, executada após o preprocessing e antes do split train/valid.
 
 ```
 cotacao_seg (silver)
     │
     ▼
 T_PRE_PROC_MODEL
-    │  → gold.cotacao_model_d_{TS}_{UUID}
-    │  → gold.cotacao_validacao_d_{TS}_{UUID}
+    │  df_model, df_validacao — em memória (sem persistência em gold)
     │
     ▼
-T_CLUSTERING
-    │  input perfil: cotacao_seg (full, sem filtro SEG)
-    │  input treino: gold.cotacao_model_d_{TS}_{UUID}
+T_CLUSTERING_EXPLORE
+    │  (sem output de tabela — apenas artifacts MLflow: elbow, silhouette)
     │
-    │  → gold.cotacao_model_d_clf_{TS}_{UUID}     (com CLF_CORRETOR)
-    │  → gold.cotacao_validacao_d_clf_{TS}_{UUID}  (com CLF_CORRETOR)
+[decisão: K_FINAL = X]
+    │
+    ▼
+T_CLUSTERING_FIT
+    │  → gold.cotacao_model_d_{TS}_{UUID}      (com CLF_CORRETOR)
+    │  → gold.cotacao_validacao_d_{TS}_{UUID}   (com CLF_CORRETOR)
     │
     ▼
 (futuro) T_FEATURE_SELECTION → T_TREINO
 ```
+
+**Apenas duas tabelas gold são criadas**, ao final do CLUSTERING_FIT. O df_model intermediário (saída do PRE_PROC_MODEL, sem CLF_CORRETOR) fica em memória Spark durante a sessão — não é persistido.
 
 ---
 
 ## Estrutura MLflow
 
 ```
-T_PR_TREINO                  ← parent run (mesmo do MODE_C, ou novo)
-  └─ T_MODE_D                ← mode run — container do MODE_D
-       ├─ T_PRE_PROC_MODEL   ← container da etapa
-       │    └─ {TS_EXEC}     ← exec run — onde os logs ficam
-       └─ T_CLUSTERING       ← container da etapa
-            └─ {TS_EXEC}     ← exec run — onde os logs ficam
+T_PR_TREINO                    ← parent run (mesmo do MODE_C, ou novo)
+  └─ T_MODE_D                  ← mode run — container do MODE_D
+       ├─ T_PRE_PROC_MODEL      ← container
+       │    └─ {TS_EXEC}        ← exec run: rules + feature prep
+       ├─ T_CLUSTERING_EXPLORE  ← container
+       │    └─ {TS_EXEC}        ← exec run: K_RANGE_EXPLORE → elbow + silhouette
+       └─ T_CLUSTERING_FIT      ← container
+            └─ {TS_EXEC}        ← exec run: K_FINAL → modelo, join, gold tables
 ```
 
-Todas as etapas são nested dentro do T_MODE_D. O PR e o MODE run ficam abertos durante toda a execução do notebook (sem `with`), e cada step usa `with mlflow.start_run(nested=True)`.
+PR e MODE run ficam abertos durante toda a sessão (sem `with`). Cada container e exec run usa `with mlflow.start_run(nested=True)` e fecha ao término da respectiva célula.
+
+---
+
+## Tabelas gold
+
+| Tabela | Etapa que cria | Conteúdo |
+|--------|---------------|----------|
+| `gold.cotacao_model_d_{TS}_{UUID}` | T_CLUSTERING_FIT | df_model com CLF_CORRETOR |
+| `gold.cotacao_validacao_d_{TS}_{UUID}` | T_CLUSTERING_FIT | df_validacao com CLF_CORRETOR |
+
+Estas são as únicas tabelas persistidas no pipeline. São as entradas das etapas futuras (FS e TREINO do MODE_D).
+
+---
+
+## Workflow de seleção de K
+
+O K não é decidido antes de rodar o notebook — é decidido a partir dos artifacts gerados pelo T_CLUSTERING_EXPLORE.
+
+### Fluxo dentro de uma sessão
+
+```
+[Cell] T_PRE_PROC_MODEL
+       → df_model em memória
+
+[Cell] T_CLUSTERING_EXPLORE
+       → para cada K em K_RANGE_EXPLORE: fit K-Means, computa inertia + silhouette
+       → loga elbow_curve.png + silhouette_curve.png no MLflow
+
+━━━ inspeciona MLflow → decide K_FINAL ━━━
+
+[Cell] K_FINAL = X   # <<< AJUSTE
+
+[Cell] T_CLUSTERING_FIT
+       → fit K-Means(K_FINAL)
+       → join CLF_CORRETOR em df_model + df_validacao
+       → salva gold tables
+```
+
+### Re-execução de T_CLUSTERING_FIT na mesma sessão
+
+Se após ver o heatmap e os scatters do FIT o K precisar de ajuste, basta:
+1. Atualizar `K_FINAL` na célula de decisão
+2. Re-rodar a célula T_CLUSTERING_FIT
+
+df_model ainda está em memória. Uma nova exec run é aberta sob T_CLUSTERING_FIT container. As gold tables anteriores são sobrescritas (`WRITE_MODE = "overwrite"`).
 
 ---
 
@@ -59,21 +110,11 @@ Idêntica ao MODE_C. Não há mudança de regras, parâmetros ou comportamento.
 
 Diferenças formais:
 - `MODE_CODE = "D"` — aparece nas tags MLflow e no nome do MODE run
-- Tabelas de saída incluem `_d_` no nome para distinguir do MODE_C
 - `SPLIT_SALT` deve ser consistente entre execuções para comparabilidade com MODE_C; o default é o mesmo usado no MODE_C
 
 ### Output
 
-| Tabela | FQN |
-|--------|-----|
-| df_model | `gold.cotacao_model_d_{TS}_{UUID}` |
-| df_validacao | `gold.cotacao_validacao_d_{TS}_{UUID}` |
-
-### Override de execução
-
-`DF_MODEL_FQN_OVERRIDE` + `DF_VALID_FQN_OVERRIDE`: se ambos preenchidos, o notebook pula a etapa PRE_PROC_MODEL e usa as tabelas indicadas diretamente no T_CLUSTERING. Útil para iterar no clustering sem reprocessar o pipeline inteiro.
-
-Quando o override é ativo, `DF_MODEL_FQN` e `DF_VALID_FQN` assumem os valores do override.
+df_model e df_validacao ficam em memória como variáveis Python na sessão Spark. Nenhuma tabela gold é criada nesta etapa.
 
 ### O que logar no MLflow
 
@@ -81,30 +122,37 @@ Idêntico ao MODE_C. Ver `3_TREINO_MODE_C.py` como referência.
 
 ---
 
-## Etapa 2 — T_CLUSTERING
+## Etapa 2 — T_CLUSTERING_EXPLORE
 
-### Sub-etapa 2.1 — Load do cotacao_seg para perfil de corretores
+### Toggle: CLUSTER_SEG_FILTER
 
-**Input**: `COTACAO_SEG_FQN` (full, sem filtro SEG por padrão)
+Controla qual subconjunto de `cotacao_seg` alimenta o perfil de corretores para o K-Means.
 
-**Por que usar cotacao_seg completo e não df_model?**
+| Valor | Comportamento | Quando usar |
+|-------|--------------|-------------|
+| `None` (default) | Perfil global: todos os corretores de todos os SEGs | Ponto de partida. Mais dados, perfil mais robusto |
+| `"SEGURO_NOVO_MANUAL"` (ou outro SEG) | Perfil restrito ao SEG informado | Se análise mostrar que perfis de corretor diferem significativamente entre SEGs |
 
-df_model contém apenas o split de treino (is_valid=False) e apenas cotações com status Emitida/Perdida. Isso pode excluir:
-- Corretores que aparecem apenas na validação
-- Corretores com cotações em status intermediários
+**Implementação:**
+```python
+CLUSTER_SEG_FILTER = None  # None = global | SEG_TARGET = por segmentação atual
 
-Usar cotacao_seg completo garante o perfil mais robusto e completo de cada corretor.
+df_perfil = spark.table(COTACAO_SEG_FQN)
+if CLUSTER_SEG_FILTER is not None:
+    df_perfil = df_perfil.filter(F.col(SEG_COL) == F.lit(CLUSTER_SEG_FILTER))
+```
 
-**Risco de leakage**: mínimo. `HR_2025_detalhe` e `QTD_COTACAO_2025_detalhe` são agregados históricos de 2025 (vindos de `corretor_detalhe_clean` via join no 2_JOIN). Não são outcomes das cotações do período de treino.
-
-`CLUSTER_SEG_FILTER` (default: None): permite restringir o perfil a um SEG específico caso se observe que os perfis de corretor diferem muito entre SEGs. Testar primeiro com None.
-
-**Colunas selecionadas para agregação**: `CD_DOC_CORRETOR`, `DS_PRODUTO_NOME`, `HR_2025_detalhe`, `QTD_COTACAO_2025_detalhe`
+**Risco de leakage**: mínimo. `HR_2025_detalhe` e `QTD_COTACAO_2025_detalhe` são agregados históricos de 2025 (vindos de `corretor_detalhe_clean` via join no 2_JOIN). Não são outcomes das cotações do período de treino/validação.
 
 ---
 
-### Sub-etapa 2.2 — Agregação por CD_DOC_CORRETOR
+### Sub-etapa 2.1 — Load e agregação do cotacao_seg
 
+**Input**: `COTACAO_SEG_FQN` com aplicação de `CLUSTER_SEG_FILTER`.
+
+**Por que usar cotacao_seg e não df_model?** df_model contém apenas cotações com status Emitida/Perdida do SEG em execução, excluindo corretores com cotações em status intermediários ou em outros SEGs. `cotacao_seg` garante o perfil mais completo do corretor.
+
+**Agregação por CD_DOC_CORRETOR:**
 ```
 GROUP BY CD_DOC_CORRETOR:
   hr_mean      = mean(HR_2025_detalhe)
@@ -112,116 +160,157 @@ GROUP BY CD_DOC_CORRETOR:
   n_produtos   = count_distinct(DS_PRODUTO_NOME)
 ```
 
-**hr_mean**: média do HR do corretor through de todos os seus produtos. HR_2025_detalhe é computado no nível (corretor, produto, tipo_solicitacao), então hr_mean captura a qualidade de conversão média cross-produto.
-
-**cotacao_mean**: volume médio de cotações por produto. Não é a soma total — a soma seria distorcida para corretores com muitos produtos.
-
-**n_produtos**: conta produtos distintos em que o corretor aparece na base. É a operacionalização do eixo "generalista/especialista".
-
-**QTD_EMITIDO_2025_detalhe excluída**: redundante, pois é mecanicamente derivada de HR × QTD_COTACAO.
-
-**Logar**: total de corretores únicos, % NULLs por feature.
+**QTD_EMITIDO_2025_detalhe excluída**: mecanicamente derivada de HR × QTD_COTACAO.
 
 ---
 
-### Sub-etapa 2.3 — NULL handling
+### Sub-etapa 2.2 — NULL handling
 
-**De onde vêm NULLs?** `HR_2025_detalhe` e `cotacao_mean` podem ser NULL para corretores sem match na tabela `corretor_detalhe_clean` (join left no 2_JOIN não encontrou o corretor). `n_produtos` nunca é NULL (count distinct retorna 0 ou mais).
+**De onde vêm NULLs?** `hr_mean` e `cotacao_mean` podem ser NULL para corretores sem match em `corretor_detalhe_clean`. `n_produtos` nunca é NULL.
 
-**NULL_STRATEGY = "drop"** (default): corretores sem histórico _detalhe são excluídos do clustering. Eles receberão `CLF_CORRETOR = NULL` após o join com df_model.
+**NULL_STRATEGY = "drop"** (default): corretores sem histórico são excluídos do clustering. Receberão `CLF_CORRETOR = NULL` no join final — tratado pelo StringIndexer downstream com `handleInvalid="keep"`.
 
-**NULL_STRATEGY = "impute_median"**: corretores sem histórico recebem o perfil mediano. Agrupa-os no cluster "médio" — pode ser aceitável ou não dependendo do contexto.
-
-**Impacto no join final**: CLF_CORRETOR será NULL para:
-- Corretores sem match em corretor_detalhe
-- Cotações com CD_DOC_CORRETOR = NULL (intermediários sem documento)
-
-Esse NULL é tratado pelo StringIndexer do pipeline downstream com `handleInvalid="keep"` (categoria extra para valores desconhecidos).
-
-**Decisão em aberto**: avaliar % de cotações sem CLF_CORRETOR após o join. Se for alta (>20%), considerar impute_median.
+**NULL_STRATEGY = "impute_median"**: corretores sem histórico recebem o perfil mediano.
 
 ---
 
-### Sub-etapa 2.4 — StandardScaler
+### Sub-etapa 2.3 — StandardScaler
 
-K-Means minimiza distâncias euclidianas. Sem normalização, features com maior variância (cotacao_mean pode ser de 1 a centenas) dominam as distâncias, enquanto hr_mean (0-1) e n_produtos (1-N) ficam com peso desprezível.
+K-Means minimiza distâncias euclidianas. Sem normalização, `cotacao_mean` (1 a centenas) dominaria as distâncias em relação a `hr_mean` (0–1) e `n_produtos` (1–N).
 
-**StandardScaler**: para cada feature, subtrai a média e divide pelo desvio padrão do conjunto de corretores (após NULL handling).
+StandardScaler: subtrai a média e divide pelo desvio padrão de cada feature (calculado sobre o conjunto de corretores após NULL handling).
 
-**Salvar o scaler como artifact**: os parâmetros de scaling (mean_ e scale_) devem ser salvos em `clustering/scaler.pkl` para uso na inferência — novos corretores precisam ser normalizados com os mesmos parâmetros do treino.
+Os parâmetros do scaler (mean_ e scale_) são salvos em `clustering/scaler.pkl` no T_CLUSTERING_FIT — necessários para normalizar novos corretores na inferência.
 
 ---
 
-### Sub-etapa 2.5 — K-Means fit
+### Sub-etapa 2.4 — K-Means explore (K_RANGE_EXPLORE)
 
-**K_FINAL**: definido com base na análise exploratória em `TESTE_CLUST_1.py`. Default = 4.
+Para cada K em `K_RANGE_EXPLORE` (ex: `[2, 3, 4, 5, 6, 7]`):
+- Fit K-Means(K, n_init=10, random_seed=RANDOM_SEED)
+- Computa inertia e silhouette score
 
-**n_init=10**: testa 10 inicializações aleatórias diferentes e mantém a melhor (menor inertia). Reduz a sensibilidade ao ponto de partida do K-Means.
+Resultados logados como `clustering/elbow_curve.png` e `clustering/silhouette_curve.png`.
+
+Nenhum modelo é salvo nesta etapa. Nenhuma tabela é criada.
+
+---
+
+### MLflow — T_CLUSTERING_EXPLORE exec run
+
+- **Tags**: `pipeline_tipo=T`, `stage=TREINO`, `run_role=exec`, `mode=D`, `step=CLUSTERING_EXPLORE`, `treino_versao`
+- **Params**: `clf_k_range_explore`, `clf_random_seed`, `clf_null_strategy`, `clf_cluster_features`, `clf_cluster_seg_filter`
+- **Artifacts**: `clustering/elbow_curve.png`, `clustering/silhouette_curve.png`, `clustering/explore_results.json`
+
+---
+
+## Etapa 3 — T_CLUSTERING_FIT
+
+### Sub-etapa 3.1 — Fit K_FINAL
+
+Fit K-Means(K_FINAL, n_init=10, random_seed=RANDOM_SEED) sobre o mesmo conjunto de corretores do explore (mesma agregação, mesmo NULL handling, mesmo scaler).
 
 **RANDOM_SEED**: garante reprodutibilidade entre execuções com os mesmos dados.
 
-**Salvar o modelo como artifact**: `clustering/kmeans_model.pkl`. Na inferência, o centroide de cada cluster deve estar disponível para atribuir novos corretores.
-
-**Logar no MLflow**: silhouette_score, inertia, n_corretores_clustered, distribuição de corretores por cluster.
-
 ---
 
-### Sub-etapa 2.6 — Atribuição de clusters e join
+### Sub-etapa 3.2 — Atribuição de clusters e join
 
-**Resultado**: `pdf_corretor_clf` — pandas DataFrame com `CD_DOC_CORRETOR` e `CLF_CORRETOR` (int 0..K-1).
+`pdf_corretor_clf` — pandas DataFrame com `CD_DOC_CORRETOR` e `CLF_CORRETOR` (string "0".."K-1").
 
-**Conversão para string**: CLF_CORRETOR deve ser convertido para string antes de entrar no pipeline de treino. O pipeline usa StringIndexer para categóricas — int seria tratado como numérico.
+**Conversão para string**: CLF_CORRETOR é string para ser tratado como categórico pelo StringIndexer downstream.
 
-```
-df_model_clf    = df_model.join(cluster_map, on="CD_DOC_CORRETOR", how="left")
+```python
+df_model_clf     = df_model.join(cluster_map, on="CD_DOC_CORRETOR", how="left")
 df_validacao_clf = df_validacao.join(cluster_map, on="CD_DOC_CORRETOR", how="left")
 ```
 
-**Métricas importantes após o join**:
-- `n_cotacoes_com_clf`: cotações que receberam cluster
-- `n_cotacoes_sem_clf`: cotações com CLF_CORRETOR = NULL
-- `pct_cobertura_model`: cobertura em df_model
-- `pct_cobertura_valid`: cobertura em df_validacao
+CLF_CORRETOR será NULL para corretores sem match em corretor_detalhe (NULL_STRATEGY="drop") ou com CD_DOC_CORRETOR = NULL.
 
-Se pct_cobertura_model for baixo (<80%), revisar NULL_STRATEGY ou investigar joins.
+**Métricas de cobertura**:
+- `clf_pct_cobertura_model`: % de cotações em df_model com CLF_CORRETOR não-NULL
+- `clf_pct_cobertura_valid`: % de cotações em df_validacao com CLF_CORRETOR não-NULL
 
----
-
-### Sub-etapa 2.7 — Salvar tabelas enriquecidas
-
-| Tabela | FQN | Conteúdo |
-|--------|-----|----------|
-| df_model_clf | `gold.cotacao_model_d_clf_{TS}_{UUID}` | df_model + CLF_CORRETOR |
-| df_validacao_clf | `gold.cotacao_validacao_d_clf_{TS}_{UUID}` | df_validacao + CLF_CORRETOR |
-
-Estas são as tabelas de entrada das etapas futuras (FS e TREINO do MODE_D).
+Se pct_cobertura_model < 80%, revisar NULL_STRATEGY ou investigar joins.
 
 ---
 
-### MLflow — o que logar no T_CLUSTERING exec run
+### Sub-etapa 3.3 — Salvar tabelas gold
 
-**Tags**: `pipeline_tipo=T`, `stage=TREINO`, `run_role=exec`, `mode=D`, `step=CLUSTERING`, `treino_versao`
+```python
+df_model_clf.write.format("delta").mode("overwrite").saveAsTable(DF_MODEL_FQN)
+df_validacao_clf.write.format("delta").mode("overwrite").saveAsTable(DF_VALID_FQN)
+```
 
-**Params**:
-- `k_final`, `random_seed`, `null_strategy`
-- `cluster_features` (lista das 3 features)
-- `cluster_seg_filter`
-- `cotacao_seg_fqn`, `df_model_fqn`, `df_valid_fqn`
-- `df_model_clf_fqn`, `df_valid_clf_fqn`
+`WRITE_MODE = "overwrite"` permite re-rodar T_CLUSTERING_FIT com K diferente na mesma sessão sem conflito de nomes.
 
-**Metrics**:
-- `silhouette_score`, `inertia`
-- `n_corretores_total`, `n_corretores_clustered`, `n_corretores_sem_cluster`
-- `n_cotacoes_model`, `n_cotacoes_com_clf_model`, `pct_cobertura_model`
-- `n_cotacoes_valid`, `n_cotacoes_com_clf_valid`, `pct_cobertura_valid`
-- `cluster_{i}_n_corretores` para i=0..K-1
+---
 
-**Artifacts**:
-- `clustering/kmeans_model.pkl` — modelo K-Means serializado
-- `clustering/scaler.pkl` — StandardScaler serializado
-- `clustering/cluster_profile.json` — centroides em escala original + contagem por cluster
-- `clustering/null_profile.json` — NULLs por feature antes do scaling
-- `tables_lineage.json`
+### MLflow — T_CLUSTERING_FIT exec run
+
+- **Tags**: `pipeline_tipo=T`, `stage=TREINO`, `run_role=exec`, `mode=D`, `step=CLUSTERING_FIT`, `treino_versao`
+- **Params**: `clf_k_final`, `clf_random_seed`, `clf_null_strategy`, `clf_cluster_features`, `clf_cluster_seg_filter`, `clf_df_model_fqn`, `clf_df_valid_fqn`
+- **Metrics**: `clf_silhouette_score`, `clf_inertia`, `clf_n_corretores_total`, `clf_n_corretores_clustered`, `clf_n_corretores_sem_cluster`, `clf_n_cotacoes_com_clf_model`, `clf_pct_cobertura_model`, `clf_n_cotacoes_com_clf_valid`, `clf_pct_cobertura_valid`, `clf_cluster_{i}_n_corretores` para i=0..K-1
+- **Artifacts**:
+
+| Artifact | Conteúdo |
+|----------|----------|
+| `clustering/kmeans_model.pkl` | Modelo K-Means serializado (K_FINAL) |
+| `clustering/scaler.pkl` | StandardScaler (mean_ e scale_) |
+| `clustering/null_profile.json` | % NULLs por feature antes do scaling |
+| `clustering/cluster_profile.json` | Centroides em escala original + n_corretores por cluster |
+| `clustering/cluster_counts.png` | Qtd de corretores por cluster |
+| `clustering/cluster_heatmap.png` | Centroides em escala original por feature (heatmap) |
+| `clustering/scatter_hr_cotacao.png` | hr_mean vs cotacao_mean, cor = cluster |
+| `clustering/scatter_hr_produtos.png` | hr_mean vs n_produtos, cor = cluster |
+| `clustering/scatter_cotacao_produtos.png` | cotacao_mean vs n_produtos, cor = cluster |
+| `clustering/corretor_tipico.json` | Mediana de cada feature por cluster |
+
+---
+
+### Análises e visualizações — referência
+
+#### Curva elbow (`clustering/elbow_curve.png`)
+
+Plota inertia (within-cluster sum of squares) vs K. Inertia sempre cai com mais clusters — o que importa é onde a queda desacelera abruptamente (o "cotovelo"). Delimita uma faixa razoável de K, não um valor único.
+
+**Como ler**: o K na inflexão da curva é o candidato inicial.
+
+#### Curva silhouette (`clustering/silhouette_curve.png`)
+
+Plota silhouette score médio vs K. Para cada ponto: `(b - a) / max(a, b)`, onde `a` = distância média dentro do cluster, `b` = distância média ao cluster mais próximo. Score -1 a 1 — quanto mais alto, mais compactos e separados os clusters. O pico indica o K com melhor estrutura interna.
+
+**Combinando os dois**: elbow delimita a faixa, silhouette aponta o K mais nítido. Quando convergem, a escolha é robusta.
+
+#### Contagem por cluster (`clustering/cluster_counts.png`)
+
+Bar chart com n_corretores por cluster. Detecta soluções degeneradas: cluster com >70% dos corretores ou <5% sinaliza K mal calibrado.
+
+#### Heatmap de perfil (`clustering/cluster_heatmap.png`)
+
+Cada linha = cluster, cada coluna = feature (hr_mean, cotacao_mean, n_produtos), valores = centroides em escala original. Permite nomear cada cluster: ex. "alto HR, baixo volume" = especialista de qualidade; "baixo HR, alto volume" = broker de volume.
+
+Principal artifact de interpretação — permite atribuir rótulos de negócio antes de passar CLF_CORRETOR para o modelo.
+
+#### Scatters (3 combinações)
+
+Cada ponto = corretor, cor = cluster. Visualizam a geometria do clustering em projeções 2D:
+- **HR vs QTD_COTACAO**: qualidade vs volume
+- **HR vs n_produtos**: qualidade vs especialização
+- **QTD_COTACAO vs n_produtos**: volume vs especialização
+
+Sobreposição intensa em todos os scatters sugere ausência de estrutura clara para o K escolhido.
+
+#### Corretor típico (`clustering/corretor_tipico.json`)
+
+Mediana de hr_mean, cotacao_mean e n_produtos por cluster, mais n_corretores. Complementa o heatmap (centroides = médias no espaço escalado) com medianas em escala original — mais robusto a outliers.
+
+```json
+[
+  { "cluster": "0", "hr_mean_median": 0.42, "cotacao_mean_median": 12.0, "n_produtos_median": 2.0, "n_corretores": 312 },
+  ...
+]
+```
 
 ---
 
@@ -229,9 +318,10 @@ Estas são as tabelas de entrada das etapas futuras (FS e TREINO do MODE_D).
 
 | Decisão | Status | Observação |
 |---------|--------|------------|
-| K_FINAL | Pendente | Definir após análise em TESTE_CLUST_1.py |
-| NULL_STRATEGY | Drop por padrão | Avaliar pct_cobertura_model após primeira execução |
-| CLUSTER_SEG_FILTER | None (global) | Testar por SEG se perfis diferirem muito |
+| K_FINAL | Pendente | Decidir após inspecionar elbow + silhouette no MLflow |
+| K_RANGE_EXPLORE | Default [2..7] | Ajustar se estrutura dos dados sugerir K maior |
+| NULL_STRATEGY | Drop por padrão | Avaliar clf_pct_cobertura_model após 1ª execução; se <80%, considerar impute_median |
+| CLUSTER_SEG_FILTER | None (global) | Testar por SEG se heatmaps mostrarem perfis muito diferentes entre SEGs |
 | SPLIT_SALT | Mesmo do MODE_C | Manter para comparabilidade entre modos |
 
 ---
@@ -240,11 +330,16 @@ Estas são as tabelas de entrada das etapas futuras (FS e TREINO do MODE_D).
 
 ### Fase atual
 - [x] PRE_PROC_MODEL implementado
-- [x] T_CLUSTERING implementado (básico)
+- [ ] Refatorar para 3 containers MLflow separados (T_PRE_PROC_MODEL, T_CLUSTERING_EXPLORE, T_CLUSTERING_FIT)
+- [ ] Remover persistência de tabelas intermediárias — apenas 2 tabelas gold ao final do FIT
+- [ ] Implementar T_CLUSTERING_EXPLORE (K_RANGE_EXPLORE → elbow + silhouette)
+- [ ] Implementar T_CLUSTERING_FIT (K_FINAL → modelo, join, gold tables, visualizações)
 
 ### Próximos passos (pós-validação)
-- [ ] Executar e validar pct_cobertura
-- [ ] Validar label rate por cluster (INTERPRETACAO_CLUSTERING.md — seção 4)
+- [ ] Executar → inspecionar elbow + silhouette → definir K_FINAL
+- [ ] Inspecionar heatmap e scatters → nomear clusters (interpretação de negócio)
+- [ ] Validar clf_pct_cobertura_model e clf_pct_cobertura_valid
+- [ ] Validar label rate por cluster
 - [ ] Implementar T_FEATURE_SELECTION (MODE_D) — incluindo CLF_CORRETOR em FEATURE_CANDIDATES
 - [ ] Implementar T_TREINO (MODE_D)
 - [ ] Comparar MODE_C vs MODE_D em 5_COMP
