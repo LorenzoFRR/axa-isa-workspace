@@ -117,18 +117,20 @@ CLF_RANDOM_SEED     = 42
 CLF_NULL_STRATEGY   = "drop"            # "drop" | "impute_median"
 CLF_FEATURES        = ["hr_mean", "cotacao_mean", "n_produtos"]
 CLF_K_RANGE_EXPLORE = [2, 3, 4, 5, 6, 7]  # <<< AJUSTE — range para elbow + silhouette
+CLF_SCALE_STRATEGIES = ["standard", "log1p_standard", "robust"]  # exploradas simultaneamente no EXPLORE
 
 print("✅ CONFIG MODE_D carregada")
-print("• input              :", COTACAO_SEG_FQN)
-print("• mode               :", MODE_CODE)
-print("• versao             :", TREINO_VERSAO)
-print("• seg_target         :", SEG_TARGET)
-print("• split_salt         :", SPLIT_SALT)
-print("• clf_k_range_explore:", CLF_K_RANGE_EXPLORE)
-print("• clf_null_strategy  :", CLF_NULL_STRATEGY)
-print("• cluster_seg_filter :", CLUSTER_SEG_FILTER)
-print("• df_model_fqn       :", DF_MODEL_FQN)
-print("• df_valid_fqn       :", DF_VALID_FQN)
+print("• input               :", COTACAO_SEG_FQN)
+print("• mode                :", MODE_CODE)
+print("• versao              :", TREINO_VERSAO)
+print("• seg_target          :", SEG_TARGET)
+print("• split_salt          :", SPLIT_SALT)
+print("• clf_k_range_explore :", CLF_K_RANGE_EXPLORE)
+print("• clf_scale_strategies:", CLF_SCALE_STRATEGIES)
+print("• clf_null_strategy   :", CLF_NULL_STRATEGY)
+print("• cluster_seg_filter  :", CLUSTER_SEG_FILTER)
+print("• df_model_fqn        :", DF_MODEL_FQN)
+print("• df_valid_fqn        :", DF_VALID_FQN)
 
 # COMMAND ----------
 
@@ -185,7 +187,7 @@ from pyspark.sql.window import Window
 
 from sklearn.cluster import KMeans
 from sklearn.metrics import silhouette_score
-from sklearn.preprocessing import StandardScaler
+from sklearn.preprocessing import RobustScaler, StandardScaler
 
 
 def ensure_schema(schema_name: str) -> None:
@@ -731,6 +733,7 @@ with mlflow.start_run(run_name=STEP_CLF_EXPLORE_NAME, nested=True) as _clf_explo
         })
         mlflow.log_params({
             "clf_k_range_explore":    json.dumps(CLF_K_RANGE_EXPLORE),
+            "clf_scale_strategies":   json.dumps(CLF_SCALE_STRATEGIES),
             "clf_random_seed":        CLF_RANDOM_SEED,
             "clf_null_strategy":      CLF_NULL_STRATEGY,
             "clf_cluster_features":   json.dumps(CLF_FEATURES),
@@ -776,76 +779,182 @@ with mlflow.start_run(run_name=STEP_CLF_EXPLORE_NAME, nested=True) as _clf_explo
         n_corretores_clustered = len(pdf_fit)
         mlflow.log_metric("clf_n_corretores_clustered", n_corretores_clustered)
 
-        # ── StandardScaler (fit sobre o conjunto completo — reutilizado no FIT) ───
-        scaler   = StandardScaler()
-        X_scaled = scaler.fit_transform(pdf_fit[CLF_FEATURES].values)
+        X_raw = pdf_fit[CLF_FEATURES].values
 
-        # ── K-Means explore ───────────────────────────────────────────────────────
-        explore_inertias    = []
-        explore_silhouettes = []
+        # ── Distribuições brutas — antes de qualquer normalização ─────────────────
+        # DS_PRODUTO_NOME: não é feature direta — é a fonte de n_produtos (countDistinct).
+        # Plotamos um bar chart de corretores por produto para contextualizar n_produtos.
+        pdf_produto_dist = (
+            df_perfil
+            .groupBy("DS_PRODUTO_NOME")
+            .agg(F.countDistinct("CD_DOC_CORRETOR").alias("n_corretores"))
+            .orderBy(F.col("n_corretores").desc())
+            .limit(20)
+            .toPandas()
+        )
 
-        for _k in CLF_K_RANGE_EXPLORE:
-            _km = KMeans(n_clusters=_k, n_init=10, random_state=CLF_RANDOM_SEED)
-            _km.fit(X_scaled)
-            _inertia    = float(_km.inertia_)
-            _silhouette = float(silhouette_score(X_scaled, _km.labels_)) if _k > 1 else 0.0
-            explore_inertias.append(_inertia)
-            explore_silhouettes.append(_silhouette)
-            print(f"  K={_k}: inertia={_inertia:.1f} | silhouette={_silhouette:.4f}")
-
-        explore_results = [
-            {"k": k, "inertia": inertia, "silhouette": sil}
-            for k, inertia, sil in zip(CLF_K_RANGE_EXPLORE, explore_inertias, explore_silhouettes)
-        ]
-        mlflow.log_dict(explore_results, "clustering/explore_results.json")
-
-        # ── Gráficos: elbow + silhouette ──────────────────────────────────────────
-        with tempfile.TemporaryDirectory() as _tmpdir:
-            # Elbow curve
-            fig, ax = plt.subplots(figsize=(8, 4))
-            ax.plot(CLF_K_RANGE_EXPLORE, explore_inertias, marker="o", linewidth=2)
-            ax.set_xlabel("K")
-            ax.set_ylabel("Inertia")
-            ax.set_title("Elbow Curve — Inertia vs K")
-            ax.grid(True, alpha=0.3)
-            _elbow_path = os.path.join(_tmpdir, "elbow_curve.png")
-            fig.savefig(_elbow_path, bbox_inches="tight", dpi=120)
+        with tempfile.TemporaryDirectory() as _tmpdir_raw:
+            # Bar chart: DS_PRODUTO_NOME (contexto para n_produtos)
+            fig, ax = plt.subplots(figsize=(10, 5))
+            ax.barh(
+                pdf_produto_dist["DS_PRODUTO_NOME"].iloc[::-1].values,
+                pdf_produto_dist["n_corretores"].iloc[::-1].values,
+                color="steelblue",
+            )
+            ax.set_xlabel("N corretores distintos")
+            ax.set_title("Corretores por produto (top 20) — DS_PRODUTO_NOME [contexto de n_produtos]")
+            ax.grid(axis="x", alpha=0.3)
+            _p = os.path.join(_tmpdir_raw, "dist_ds_produto_nome.png")
+            fig.savefig(_p, bbox_inches="tight", dpi=120)
             plt.close(fig)
-            mlflow.log_artifact(_elbow_path, artifact_path="clustering")
+            mlflow.log_artifact(_p, artifact_path="clustering/explore/raw")
 
-            # Silhouette curve
-            fig, ax = plt.subplots(figsize=(8, 4))
-            ax.plot(CLF_K_RANGE_EXPLORE, explore_silhouettes, marker="o", linewidth=2, color="orange")
-            ax.set_xlabel("K")
-            ax.set_ylabel("Silhouette Score")
-            ax.set_title("Silhouette Score vs K")
-            ax.grid(True, alpha=0.3)
-            _sil_path = os.path.join(_tmpdir, "silhouette_curve.png")
-            fig.savefig(_sil_path, bbox_inches="tight", dpi=120)
-            plt.close(fig)
-            mlflow.log_artifact(_sil_path, artifact_path="clustering")
+            # Histogramas: hr_mean, cotacao_mean, n_produtos
+            _pct_levels  = [10, 25, 50, 75, 90]
+            _pct_colors  = {10: "red", 25: "orange", 50: "green", 75: "orange", 90: "red"}
+            _pct_ls      = {10: "--",  25: "--",     50: "-",     75: "--",     90: "--"}
+            for _col in CLF_FEATURES:
+                _vals = pdf_fit[_col].dropna().values
+                _pcts = {p: float(np.percentile(_vals, p)) for p in _pct_levels}
+                fig, ax = plt.subplots(figsize=(8, 4))
+                ax.hist(_vals, bins=50, color="steelblue", edgecolor="none", alpha=0.8)
+                for _p_lvl, _p_val in _pcts.items():
+                    ax.axvline(_p_val, color=_pct_colors[_p_lvl], linestyle=_pct_ls[_p_lvl],
+                               linewidth=1.2, label=f"p{_p_lvl}={_p_val:.2f}")
+                ax.set_xlabel(_col)
+                ax.set_ylabel("Frequência")
+                ax.set_title(f"Distribuição bruta — {_col}")
+                ax.legend(fontsize=8)
+                _p = os.path.join(_tmpdir_raw, f"dist_raw_{_col}.png")
+                fig.savefig(_p, bbox_inches="tight", dpi=120)
+                plt.close(fig)
+                mlflow.log_artifact(_p, artifact_path="clustering/explore/raw")
+
+        # def _build_scaler_and_X(X, strategy):
+        #     if strategy == "standard":
+        #         sc = StandardScaler()
+        #         return sc, sc.fit_transform(X)
+        #     elif strategy == "log1p_standard":
+        #         sc = StandardScaler()
+        #         return sc, sc.fit_transform(np.log1p(X))
+        #     elif strategy == "robust":
+        #         sc = RobustScaler()
+        #         return sc, sc.fit_transform(X)
+        #     else:
+        #         raise ValueError(f"❌ CLF_SCALE_STRATEGY inválido: {strategy}")
+
+        def _build_scaler_and_X(X, strategy):
+            if strategy == "standard":
+                sc = StandardScaler()
+                return sc, sc.fit_transform(X)
+            elif strategy == "log1p_standard":
+                sc = StandardScaler()
+                # Convert to float before applying log1p
+                X_float = X.astype(float)
+                return sc, sc.fit_transform(np.log1p(X_float))
+            elif strategy == "robust":
+                sc = RobustScaler()
+                return sc, sc.fit_transform(X)
+            else:
+                raise ValueError(f"❌ CLF_SCALE_STRATEGY inválido: {strategy}")
+
+        # ── K-Means explore — loop sobre estratégias × K ──────────────────────────
+        explore_by_strategy: dict = {}
+
+        for _strategy in CLF_SCALE_STRATEGIES:
+            print(f"\n── estratégia: {_strategy} ──")
+            _sc, _X = _build_scaler_and_X(X_raw, _strategy)
+
+            # ── Distribuições pós-normalização ────────────────────────────────────
+            with tempfile.TemporaryDirectory() as _tmpdir_dist:
+                for _j, _col in enumerate(CLF_FEATURES):
+                    _vals_sc = _X[:, _j]
+                    fig, ax = plt.subplots(figsize=(8, 4))
+                    ax.hist(_vals_sc, bins=50, color="darkorange", edgecolor="none", alpha=0.8)
+                    ax.axvline(float(np.mean(_vals_sc)),   color="green", linestyle="-",  linewidth=1.5,
+                               label=f"mean={np.mean(_vals_sc):.3f}")
+                    ax.axvline(float(np.median(_vals_sc)), color="blue",  linestyle="--", linewidth=1.5,
+                               label=f"median={np.median(_vals_sc):.3f}")
+                    ax.set_xlabel(f"{_col} (pós {_strategy})")
+                    ax.set_ylabel("Frequência")
+                    ax.set_title(f"Distribuição pós-normalização — {_col} [{_strategy}]")
+                    ax.legend(fontsize=8)
+                    _p = os.path.join(_tmpdir_dist, f"dist_scaled_{_col}.png")
+                    fig.savefig(_p, bbox_inches="tight", dpi=120)
+                    plt.close(fig)
+                    mlflow.log_artifact(_p, artifact_path=f"clustering/explore/{_strategy}")
+
+            _inertias, _silhouettes = [], []
+
+            for _k in CLF_K_RANGE_EXPLORE:
+                _km = KMeans(n_clusters=_k, n_init=10, random_state=CLF_RANDOM_SEED)
+                _km.fit(_X)
+                _inertia    = float(_km.inertia_)
+                _silhouette = float(silhouette_score(_X, _km.labels_)) if _k > 1 else 0.0
+                _inertias.append(_inertia)
+                _silhouettes.append(_silhouette)
+                print(f"  K={_k}: inertia={_inertia:.1f} | silhouette={_silhouette:.4f}")
+
+            _results = [
+                {"k": k, "inertia": inertia, "silhouette": sil}
+                for k, inertia, sil in zip(CLF_K_RANGE_EXPLORE, _inertias, _silhouettes)
+            ]
+            explore_by_strategy[_strategy] = {"scaler": _sc, "X_scaled": _X, "results": _results}
+
+            mlflow.log_dict(_results, f"clustering/explore/{_strategy}/explore_results.json")
+
+            with tempfile.TemporaryDirectory() as _tmpdir:
+                fig, ax = plt.subplots(figsize=(8, 4))
+                ax.plot(CLF_K_RANGE_EXPLORE, _inertias, marker="o", linewidth=2)
+                ax.set_xlabel("K")
+                ax.set_ylabel("Inertia")
+                ax.set_title(f"Elbow Curve — {_strategy}")
+                ax.grid(True, alpha=0.3)
+                _p = os.path.join(_tmpdir, "elbow_curve.png")
+                fig.savefig(_p, bbox_inches="tight", dpi=120)
+                plt.close(fig)
+                mlflow.log_artifact(_p, artifact_path=f"clustering/explore/{_strategy}")
+
+                fig, ax = plt.subplots(figsize=(8, 4))
+                ax.plot(CLF_K_RANGE_EXPLORE, _silhouettes, marker="o", linewidth=2, color="orange")
+                ax.set_xlabel("K")
+                ax.set_ylabel("Silhouette Score")
+                ax.set_title(f"Silhouette Score vs K — {_strategy}")
+                ax.grid(True, alpha=0.3)
+                _p = os.path.join(_tmpdir, "silhouette_curve.png")
+                fig.savefig(_p, bbox_inches="tight", dpi=120)
+                plt.close(fig)
+                mlflow.log_artifact(_p, artifact_path=f"clustering/explore/{_strategy}")
 
 print("✅ T_CLUSTERING_EXPLORE ok")
 print(f"• corretores para clustering: {n_corretores_clustered} (de {n_corretores_total} total)")
 print("• K_RANGE_EXPLORE:", CLF_K_RANGE_EXPLORE)
-for r in explore_results:
-    print(f"  K={r['k']}: inertia={r['inertia']:.1f} | silhouette={r['silhouette']:.4f}")
-print("• Inspecionar clustering/elbow_curve.png e clustering/silhouette_curve.png no MLflow")
+print("• Estratégias exploradas:", CLF_SCALE_STRATEGIES)
+for _strategy in CLF_SCALE_STRATEGIES:
+    print(f"\n  [{_strategy}]")
+    for r in explore_by_strategy[_strategy]["results"]:
+        print(f"    K={r['k']}: inertia={r['inertia']:.1f} | silhouette={r['silhouette']:.4f}")
+print("\n• Inspecionar clustering/explore/{strategy}/ no MLflow antes de preencher a célula de decisão")
 
 # COMMAND ----------
 
 # MAGIC %md
-# MAGIC ## Célula de decisão — K_FINAL
-# MAGIC Inspecionar `clustering/elbow_curve.png` e `clustering/silhouette_curve.png` no MLflow antes de preencher.
+# MAGIC ## Célula de decisão — K_FINAL + SCALE_STRATEGY_FINAL
+# MAGIC Inspecionar `clustering/explore/{strategy}/elbow_curve.png` e `silhouette_curve.png` no MLflow antes de preencher.
 
 # COMMAND ----------
 
 # ============================================================
-# DECISION CELL — preencher CLF_K_FINAL após inspecionar MLflow
+# DECISION CELL — preencher após inspecionar MLflow
 # ============================================================
-CLF_K_FINAL = 4  # <<< AJUSTE após ver elbow + silhouette
+CLF_K_FINAL              = 7                  # <<< AJUSTE após ver elbow + silhouette por estratégia
+CLF_SCALE_STRATEGY_FINAL = "log1p_standard"   # <<< AJUSTE — "standard" | "log1p_standard" | "robust"
 
-print(f"CLF_K_FINAL = {CLF_K_FINAL}")
+assert CLF_SCALE_STRATEGY_FINAL in CLF_SCALE_STRATEGIES, \
+    f"❌ CLF_SCALE_STRATEGY_FINAL='{CLF_SCALE_STRATEGY_FINAL}' não está em CLF_SCALE_STRATEGIES={CLF_SCALE_STRATEGIES}"
+
+print(f"CLF_K_FINAL              = {CLF_K_FINAL}")
+print(f"CLF_SCALE_STRATEGY_FINAL = {CLF_SCALE_STRATEGY_FINAL}")
 
 # COMMAND ----------
 
@@ -868,16 +977,17 @@ with mlflow.start_run(run_name=STEP_CLF_FIT_NAME, nested=True) as _clf_fit_conta
             "mode": MODE_CODE, "step": "CLUSTERING_FIT",
             "treino_versao": TREINO_VERSAO, "versao_ref": VERSAO_REF,
         })
+        # ── Recuperar scaler + X_scaled da estratégia escolhida ──────────────────
+        scaler   = explore_by_strategy[CLF_SCALE_STRATEGY_FINAL]["scaler"]
+        X_scaled = explore_by_strategy[CLF_SCALE_STRATEGY_FINAL]["X_scaled"]
+
         mlflow.log_params({
-            "clf_k_final":            CLF_K_FINAL,
-            "clf_random_seed":        CLF_RANDOM_SEED,
-            "clf_null_strategy":      CLF_NULL_STRATEGY,
-            "clf_cluster_features":   json.dumps(CLF_FEATURES),
-            "clf_cluster_seg_filter": str(CLUSTER_SEG_FILTER),
-            "df_model_fqn":           DF_MODEL_FQN,
-            "df_valid_fqn":           DF_VALID_FQN,
-            "pr_run_id":              PR_RUN_ID,
-            "mode_run_id":            MODE_RUN_ID,
+            "clf_k_final":              CLF_K_FINAL,
+            "clf_scale_strategy_final": CLF_SCALE_STRATEGY_FINAL,
+            "df_model_fqn":             DF_MODEL_FQN,
+            "df_valid_fqn":             DF_VALID_FQN,
+            "pr_run_id":                PR_RUN_ID,
+            "mode_run_id":              MODE_RUN_ID,
         })
         mlflow.log_dict(build_tables_lineage_clf_fit(), "tables_lineage.json")
 
@@ -932,30 +1042,22 @@ with mlflow.start_run(run_name=STEP_CLF_FIT_NAME, nested=True) as _clf_fit_conta
             print(f"⚠️  pct_cobertura_model={pct_cob_model:.1%} — abaixo de 80%. Revisar CLF_NULL_STRATEGY.")
 
         # ── Artifacts ─────────────────────────────────────────────────────────────
-        centroids_original = scaler.inverse_transform(km.cluster_centers_)
+        # Para log1p_standard: inverse_transform devolve escala log1p — aplicar expm1 para escala real
+        _centroids_inv = scaler.inverse_transform(km.cluster_centers_)
+        centroids_original = np.expm1(_centroids_inv) if CLF_SCALE_STRATEGY_FINAL == "log1p_standard" else _centroids_inv
 
-        clf_cluster_profile = [
+        cluster_summary = [
             {
-                "cluster": str(i),
+                "cluster":      str(i),
                 "n_corretores": int((pdf_fit_clf["CLF_CORRETOR"] == str(i)).sum()),
-                **{feat: float(centroids_original[i][j]) for j, feat in enumerate(CLF_FEATURES)},
-            }
-            for i in range(CLF_K_FINAL)
-        ]
-
-        corretor_tipico = [
-            {
-                "cluster": str(i),
-                **{f"{feat}_median": float(pdf_fit_clf.loc[pdf_fit_clf["CLF_CORRETOR"] == str(i), feat].median())
+                **{f"{feat}_centroid": float(centroids_original[i][j]) for j, feat in enumerate(CLF_FEATURES)},
+                **{f"{feat}_median":   float(pdf_fit_clf.loc[pdf_fit_clf["CLF_CORRETOR"] == str(i), feat].median())
                    for feat in CLF_FEATURES},
-                "n_corretores": int((pdf_fit_clf["CLF_CORRETOR"] == str(i)).sum()),
             }
             for i in range(CLF_K_FINAL)
         ]
 
-        mlflow.log_dict(clf_cluster_profile, "clustering/cluster_profile.json")
-        mlflow.log_dict({"null_counts": clf_null_counts, "null_pct": clf_null_pct}, "clustering/null_profile.json")
-        mlflow.log_dict(corretor_tipico, "clustering/corretor_tipico.json")
+        mlflow.log_dict(cluster_summary, "clustering/cluster_summary.json")
 
         with tempfile.TemporaryDirectory() as _tmpdir:
             # scaler.pkl e kmeans_model.pkl
@@ -996,7 +1098,7 @@ with mlflow.start_run(run_name=STEP_CLF_FIT_NAME, nested=True) as _clf_fit_conta
             _path = os.path.join(_tmpdir, "cluster_heatmap.png")
             fig.savefig(_path, bbox_inches="tight", dpi=120)
             plt.close(fig)
-            mlflow.log_artifact(_path, artifact_path="clustering")
+            mlflow.log_artifact(_path, artifact_path="clustering/original")
 
             # scatter plots (3 combinações)
             _colors = plt.cm.tab10.colors
@@ -1024,7 +1126,54 @@ with mlflow.start_run(run_name=STEP_CLF_FIT_NAME, nested=True) as _clf_fit_conta
                 _path = os.path.join(_tmpdir, _fname)
                 fig.savefig(_path, bbox_inches="tight", dpi=120)
                 plt.close(fig)
-                mlflow.log_artifact(_path, artifact_path="clustering")
+                mlflow.log_artifact(_path, artifact_path="clustering/original")
+
+        # ── Visualizações em escala normalizada (clustering/scaled/) ─────────────
+        with tempfile.TemporaryDirectory() as _tmpdir_scaled:
+            _feat_idx = {feat: j for j, feat in enumerate(CLF_FEATURES)}
+
+            # cluster_heatmap scaled
+            _heatmap_scaled_df = pd.DataFrame(
+                km.cluster_centers_,
+                columns=CLF_FEATURES,
+                index=[f"cluster_{i}" for i in range(CLF_K_FINAL)],
+            )
+            fig, ax = plt.subplots(figsize=(7, max(3, CLF_K_FINAL)))
+            sns.heatmap(_heatmap_scaled_df, annot=True, fmt=".3f", cmap="coolwarm", center=0,
+                        ax=ax, linewidths=0.5)
+            ax.set_title(f"Perfil de cluster — centroides em escala normalizada σ (K={CLF_K_FINAL})")
+            _path = os.path.join(_tmpdir_scaled, "cluster_heatmap.png")
+            fig.savefig(_path, bbox_inches="tight", dpi=120)
+            plt.close(fig)
+            mlflow.log_artifact(_path, artifact_path="clustering/scaled")
+
+            # scatter plots scaled
+            _scatter_pairs_scaled = [
+                ("hr_mean",      "cotacao_mean", "scatter_hr_cotacao.png"),
+                ("hr_mean",      "n_produtos",   "scatter_hr_produtos.png"),
+                ("cotacao_mean", "n_produtos",   "scatter_cotacao_produtos.png"),
+            ]
+            for _x_col, _y_col, _fname in _scatter_pairs_scaled:
+                _xi, _yi = _feat_idx[_x_col], _feat_idx[_y_col]
+                fig, ax = plt.subplots(figsize=(7, 5))
+                for _i in range(CLF_K_FINAL):
+                    _mask = km.labels_ == _i
+                    ax.scatter(
+                        X_scaled[_mask, _xi],
+                        X_scaled[_mask, _yi],
+                        label=f"cluster {_i}",
+                        alpha=0.5,
+                        s=20,
+                        color=_colors[_i % len(_colors)],
+                    )
+                ax.set_xlabel(f"{_x_col} (σ)")
+                ax.set_ylabel(f"{_y_col} (σ)")
+                ax.set_title(f"{_x_col} vs {_y_col} — escala normalizada (K={CLF_K_FINAL})")
+                ax.legend()
+                _path = os.path.join(_tmpdir_scaled, _fname)
+                fig.savefig(_path, bbox_inches="tight", dpi=120)
+                plt.close(fig)
+                mlflow.log_artifact(_path, artifact_path="clustering/scaled")
 
         # ── Salvar tabelas gold ───────────────────────────────────────────────────
         df_model_out.write.format("delta").mode(WRITE_MODE).saveAsTable(DF_MODEL_FQN)
@@ -1038,3 +1187,10 @@ print("• df_model    :", DF_MODEL_FQN, f"({n_model_total} linhas)")
 print("• df_validacao:", DF_VALID_FQN, f"({n_valid_total} linhas)")
 for i in range(CLF_K_FINAL):
     print(f"  cluster {i}: {clf_cluster_dist[f'clf_cluster_{i}_n_corretores']} corretores")
+
+# COMMAND ----------
+
+spark.catalog.tableExists(DF_MODEL_FQN)
+
+# COMMAND ----------
+
