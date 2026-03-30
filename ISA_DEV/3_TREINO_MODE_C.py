@@ -1,8 +1,4 @@
 # Databricks notebook source
-x = 1
-
-# COMMAND ----------
-
 # MAGIC %md
 # MAGIC ## Configs
 
@@ -15,7 +11,7 @@ import uuid
 # =========================
 # MLflow (estrutura)
 # =========================
-EXPERIMENT_NAME = "/Workspace/Users/psw.service@pswdigital.com.br/TESTE_ML_NOVO/TESTE/ISA_EXP"  # <<< AJUSTE
+EXPERIMENT_NAME = "/Users/psw.service@pswdigital.com.br/ISA_DEV/ISA_EXP"
 
 PR_TREINO_NAME  = "T_PR_TREINO"
 MODE_CODE       = "C"
@@ -48,7 +44,7 @@ def run_name_vts(base: str) -> str:
 # =========================
 # INPUT
 # =========================
-COTACAO_SEG_FQN = "silver.cotacao_seg_20260323_102048"  # <<< AJUSTE
+COTACAO_SEG_FQN = "silver.cotacao_seg_20260326_105205"  # <<< AJUSTE
 
 # =========================
 # OUTPUT
@@ -76,7 +72,7 @@ DO_PROFILE = True
 # PRE_PROC_MODEL / FS — colunas e segmento
 # =========================
 # SEG_TARGET é usado no PRE_PROC_MODEL (logado como param) e reutilizado no FS e TREINO.
-SEG_TARGET = "SEGURO_NOVO_DIGITAL"  # <<< AJUSTE
+SEG_TARGET = "RENOVACAO_DIGITAL"  # <<< AJUSTE
 
 FS_SEEDS            = [42, 123, 7]
 FS_TRAIN_FRAC       = 0.70
@@ -1838,3 +1834,6 @@ for mid, r in eval_results.items():
     print(f"• {mid}: τ={r['threshold']}  P={r['precision']}  R={r['recall']}  F1={r['f1']}  F2={r['f2']}")
 print("\n⚠️  Anotar TREINO_EXEC_RUN_ID para uso no 4_INFERENCIA_MODE_C e 5_COMP_MODE_C:")
 print(f"    TREINO_EXEC_RUN_ID = \"{TREINO_EXEC_RUN_ID}\"")
+
+# COMMAND ----------
+

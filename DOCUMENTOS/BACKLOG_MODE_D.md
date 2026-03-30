@@ -1,7 +1,5 @@
 Backlog para desenvolvimento da versão 11, que adiciona clustering ao fluxo no notebook 3_TREINO_MODE_D. Esta versão, pela natureza do desenvolvimento (adição da etapa de clustering), assume novo MODE_D.
 
-
-
 # T_PR_TREINO
 - Adicionar/Ajustar lógica de run override 🔴
 - Ajustar local de log das informações (ver de logar com redundância)
@@ -14,7 +12,7 @@ Backlog para desenvolvimento da versão 11, que adiciona clustering ao fluxo no 
 - Logar sillouette e elbow curve no mesmo gráfico
 - Revisar lógica estratificação dos atributos dos corretores
 - [STDBY] Avaliar novas colunas para inserir na etapa de clustering
-- Plotar distribuições para as colunas envolvidas 🔴
+- [x] Plotar distribuições para as colunas envolvidas
 - Entender leitura sillouette/elbow 🟡
 - Entender estratégias de normalização implementadas 🟡
 
@@ -22,14 +20,11 @@ Backlog para desenvolvimento da versão 11, que adiciona clustering ao fluxo no 
 - [x] Célula de decisão: Implementar guia para decisão de seleção de K
 - [STDBY] Logar, tipo como em rules DE PRE_PROC_MODEL, ativação controlada de clustering (toggle True, False pra aplicar clustering)
 - [x] Plotar visualizações de resultados normalizadas/escala real
-- Validar análises 🟡
-    - Heatmap com valores < 0
-- Organizar visualizações nos artefatos 🔴🔴🔴
-- Logar heatmap com valor normalizado + valor real abaixo 🔴
+- [x] Organizar visualizações nos artefatos
+- Logar heatmap com valor normalizado + valor real abaixo (centralizado) 🔴
 
 - Logar análises/visualizações clustering + Entender interpretação análises
     - [x] QTD corretor por cluster
-    - [ ] Elbow / Sillouette (embora já tenha sido escolhido K_FINAL nesta etapa) 🔴
     - [x] Heatmaps clusters
     - [x] Distribuições HR vs QTD cotações por corretor
     - [x] Distribuições HR vs QTD produtos por corretor

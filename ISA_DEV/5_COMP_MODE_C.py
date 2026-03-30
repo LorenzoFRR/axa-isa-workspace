@@ -11,7 +11,7 @@ import mlflow
 # =========================
 # MLflow / Estrutura
 # =========================
-EXPERIMENT_NAME         = "/Workspace/Users/psw.service@pswdigital.com.br/TESTE_ML_NOVO/TESTE/ISA_EXP"  # <<< AJUSTE
+EXPERIMENT_NAME = "/Users/psw.service@pswdigital.com.br/ISA_DEV/ISA_EXP"
 PR_COMP_NAME            = "T_PR_COMP"
 MODE_CODE               = "C"
 COMP_VERSAO             = "V10.0.0"
@@ -29,8 +29,8 @@ PR_COMP_RUN_ID_OVERRIDE = "9db9936565ce4512aab8966c638c6897"
 # =========================
 # INPUT
 # =========================
-INFERENCIA_TABLE_FQN = "gold.cotacao_inferencia_mode_c_seguro_novo_digital_20260325_131146"  # <<< AJUSTE
-SEG_TARGET           = "SEGURO_NOVO_DIGITAL"                   # <<< AJUSTE
+INFERENCIA_TABLE_FQN = "gold.cotacao_inferencia_mode_c_renovacao_digital_20260330_134607"  # <<< AJUSTE
+SEG_TARGET           = "RENOVACAO_DIGITAL"                   # <<< AJUSTE
 
 # =========================
 # MODELOS
@@ -43,14 +43,14 @@ MODEL_IDS = []
 # =========================
 # run_id do exec run T_TREINO — necessário para carregar os thresholds de cada modelo.
 # Se vazio, thresholds não são anotados nos gráficos.
-TREINO_EXEC_RUN_ID = "6bb924074627446d99083db58f10f54e"   # <<< AJUSTE
+TREINO_EXEC_RUN_ID = "6857411f8da449eeaac0e432fcf7edcd"   # <<< AJUSTE
 
 # =========================
 # REFERÊNCIA AO JOIN
 # =========================
 # run_id do exec run do JOIN (run_role=exec, etapa=JOIN) — necessário para barras de status no gráfico temporal.
 # Se vazio, barras não são adicionadas ao gráfico.
-JOIN_EXEC_RUN_ID = "495d1b76068f4677bc211022e4617949"   # <<< AJUSTE
+JOIN_EXEC_RUN_ID = "28fbd7c3809e4eb0b437956b7af15dd8"   # <<< AJUSTE
 
 # =========================
 # PARÂMETROS DE ANÁLISE

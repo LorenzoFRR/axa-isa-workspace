@@ -11,7 +11,7 @@ import uuid
 # =========================
 # MLflow
 # =========================
-EXPERIMENT_NAME = "/Workspace/Users/psw.service@pswdigital.com.br/TESTE_ML_NOVO/TESTE/ISA_EXP"  # <<< AJUSTE
+EXPERIMENT_NAME = "/Users/psw.service@pswdigital.com.br/ISA_DEV/ISA_EXP"
 
 PR_INF_NAME = "T_PR_INFERENCIA"
 MODE_CODE   = "C"
@@ -31,7 +31,8 @@ PR_INF_RUN_ID_OVERRIDE = "e7af2dc5cb8b45c194656889f4b28fd2"
 # REFERÊNCIA AO TREINO
 # =========================
 # run_id do exec run T_TREINO (run_role=exec, step=TREINO) — impresso no final do 3_TREINO_MODE_C
-TREINO_EXEC_RUN_ID = "6bb924074627446d99083db58f10f54e"   # <<< OBRIGATÓRIO
+TREINO_EXEC_RUN_ID = "6857411f8da449eeaac0e432fcf7edcd"   # <<< OBRIGATÓRIO
+SEG_TARGET = "RENOVACAO_DIGITAL"   # <<< AJUSTE
 
 # =========================
 # MODELOS A INFERIR
@@ -48,8 +49,9 @@ LABEL_COL  = "label"
 ID_COL     = "CD_NUMERO_COTACAO_AXA"
 SEG_COL    = "SEG"
 DATE_COL   = "DATA_COTACAO"
-SEG_TARGET = "SEGURO_NOVO_DIGITAL"   # <<< AJUSTE
 SEG_SLUG   = SEG_TARGET.lower()
+
+
 
 ID_COLS = [ID_COL, "CD_DOC_CORRETOR", "TS_ARQ", SEG_COL, DATE_COL]
 
@@ -66,7 +68,7 @@ OUTROS_LABEL = "OUTROS"   # constante usada na truncagem; deve coincidir com o t
 # INPUT / OUTPUT
 # =========================
 # df_validacao gerado pelo 3_TREINO_MODE_C (logado como param 'df_validacao_fqn')
-INPUT_TABLE_FQN = "gold.cotacao_validacao_20260325_095415_3f427ccd"   # <<< AJUSTE
+INPUT_TABLE_FQN = "gold.cotacao_validacao_20260330_100116_c51aae1f"   # <<< AJUSTE
 
 OUT_SCHEMA       = "gold"
 OUTPUT_TABLE_FQN = f"{OUT_SCHEMA}.cotacao_inferencia_mode_{MODE_CODE.lower()}_{SEG_SLUG}_{TS_EXEC}"

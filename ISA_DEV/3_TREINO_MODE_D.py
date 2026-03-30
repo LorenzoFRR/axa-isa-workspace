@@ -813,14 +813,32 @@ with mlflow.start_run(run_name=STEP_CLF_EXPLORE_NAME, nested=True) as _clf_explo
             _pct_levels  = [10, 25, 50, 75, 90]
             _pct_colors  = {10: "red", 25: "orange", 50: "green", 75: "orange", 90: "red"}
             _pct_ls      = {10: "--",  25: "--",     50: "-",     75: "--",     90: "--"}
+            # for _col in CLF_FEATURES:
+            #     _vals = pdf_fit[_col].dropna().values
+            #     _pcts = {p: float(np.percentile(_vals, p)) for p in _pct_levels}
+            #     fig, ax = plt.subplots(figsize=(8, 4))
+            #     ax.hist(_vals, bins=50, color="steelblue", edgecolor="none", alpha=0.8)
+            #     for _p_lvl, _p_val in _pcts.items():
+            #         ax.axvline(_p_val, color=_pct_colors[_p_lvl], linestyle=_pct_ls[_p_lvl],
+            #                    linewidth=1.2, label=f"p{_p_lvl}={_p_val:.2f}")
+            #     ax.set_xlabel(_col)
+            #     ax.set_ylabel("Frequência")
+            #     ax.set_title(f"Distribuição bruta — {_col}")
+            #     ax.legend(fontsize=8)
+            #     _p = os.path.join(_tmpdir_raw, f"dist_raw_{_col}.png")
+            #     fig.savefig(_p, bbox_inches="tight", dpi=120)
+            #     plt.close(fig)
+            #     mlflow.log_artifact(_p, artifact_path="clustering/explore/raw")
+
             for _col in CLF_FEATURES:
-                _vals = pdf_fit[_col].dropna().values
+                # Cast to float to avoid decimal.Decimal issues
+                _vals = pdf_fit[_col].dropna().astype(float).values
                 _pcts = {p: float(np.percentile(_vals, p)) for p in _pct_levels}
                 fig, ax = plt.subplots(figsize=(8, 4))
                 ax.hist(_vals, bins=50, color="steelblue", edgecolor="none", alpha=0.8)
                 for _p_lvl, _p_val in _pcts.items():
                     ax.axvline(_p_val, color=_pct_colors[_p_lvl], linestyle=_pct_ls[_p_lvl],
-                               linewidth=1.2, label=f"p{_p_lvl}={_p_val:.2f}")
+                            linewidth=1.2, label=f"p{_p_lvl}={_p_val:.2f}")
                 ax.set_xlabel(_col)
                 ax.set_ylabel("Frequência")
                 ax.set_title(f"Distribuição bruta — {_col}")
@@ -829,19 +847,6 @@ with mlflow.start_run(run_name=STEP_CLF_EXPLORE_NAME, nested=True) as _clf_explo
                 fig.savefig(_p, bbox_inches="tight", dpi=120)
                 plt.close(fig)
                 mlflow.log_artifact(_p, artifact_path="clustering/explore/raw")
-
-        # def _build_scaler_and_X(X, strategy):
-        #     if strategy == "standard":
-        #         sc = StandardScaler()
-        #         return sc, sc.fit_transform(X)
-        #     elif strategy == "log1p_standard":
-        #         sc = StandardScaler()
-        #         return sc, sc.fit_transform(np.log1p(X))
-        #     elif strategy == "robust":
-        #         sc = RobustScaler()
-        #         return sc, sc.fit_transform(X)
-        #     else:
-        #         raise ValueError(f"❌ CLF_SCALE_STRATEGY inválido: {strategy}")
 
         def _build_scaler_and_X(X, strategy):
             if strategy == "standard":
@@ -1187,10 +1192,6 @@ print("• df_model    :", DF_MODEL_FQN, f"({n_model_total} linhas)")
 print("• df_validacao:", DF_VALID_FQN, f"({n_valid_total} linhas)")
 for i in range(CLF_K_FINAL):
     print(f"  cluster {i}: {clf_cluster_dist[f'clf_cluster_{i}_n_corretores']} corretores")
-
-# COMMAND ----------
-
-spark.catalog.tableExists(DF_MODEL_FQN)
 
 # COMMAND ----------
 
