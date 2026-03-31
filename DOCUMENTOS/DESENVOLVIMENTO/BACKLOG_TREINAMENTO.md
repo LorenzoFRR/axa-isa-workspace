@@ -17,9 +17,10 @@ OBS: Materiais de entregas estão no Confluence: https://pswdigital.atlassian.ne
 # ###################################################################
 
 # Definição desenvolvimento 30/03
-- Pipeline demais segmentações 🔵 OK
 - Pipeline distribuição 🔵
-- Desenvolvimento V11 - [BACKLOG_CLUSTERING.md] 🔵
+- Desenvolvimento V11 🔵
+  - Executar/comparar treino com mesmas colunas que MODE_C, substituindo por CLF_CORRETOR
+
 
 # Mapeamento desenvolvimento [STDBY]
 - Avaliar necessidade análise capacidade operacional
@@ -30,19 +31,21 @@ OBS: Materiais de entregas estão no Confluence: https://pswdigital.atlassian.ne
 # ###################################################################
 # ###################################################################
 
-# Integrações / Otimização desenvolvimento
+# Integrações
 - [ ] Integração Claude/Databricks 🔴
 - [ ] Integração versionamento ISA_DEV git 🟠
-- [ ] Refazer integração Github (consulta Gabriel) 🔴
-- [ ] Definir acompanhamento/gerenciamento projeto 🔴
+- [ ] Unity Catalog 🔴
 
-# Desenvolvimento
+# Otimização desenvolvimento
+- [ ] Definir acompanhamento/gerenciamento projeto 🔴
+- [ ] Revisar CLAUDE.md
 - [ ] Estudar seção AI/ML Databricks
   - Models
-- [ ] Revisar CLAUDE.md
-- [ ] Unity Catalog 🔴
-- [x] Pipeline demais segmentações 🔵 OK
 - [ ] Pipeline distribuição 🔵
+- Criar visualização pra verificar relações notebooks/fluxos/modes/etc
+
+## PENDÊNCIAS SEM ETAPA
+- Padronizar nomes tabelas geradas no pipeline
 
 ## 0_INGESTAO
 - [ ] Re-avaliar nomenclatura tabelas de corretor
@@ -50,8 +53,9 @@ OBS: Materiais de entregas estão no Confluence: https://pswdigital.atlassian.ne
 
 ## 1_PRE_PROC
   - [ ] Fazer análise função que calcula regra temporal colunas DIAS_*
-  - [ ] Ver quando remover DT_INICIO_VIGENCIA justamente porque já crio DIAS_INICIO_VIGENCIA
   - [ ] Entender como trabalhar com DIAS_ANALISE_SUBSCRICAO para cotações DIGITAL
+  - Remover DT_INICIO_VIGENCIA (tá aparecendo em silver.cotacao_seg_timestamp e em diante - removida em TREINO)
+
 
 ## 2_JOIN
 
@@ -63,24 +67,38 @@ OBS: Materiais de entregas estão no Confluence: https://pswdigital.atlassian.ne
 
 ## 3_TREINO
 
-  ## ETAPA PRE_PROC_MODEL
+  ## SUBETAPA PRE_PROC_MODEL
 
-  ## ETAPA FEATURE SELECTION
+  ## SUBETAPA CLUSTERING_EXPLORE (MODE_D specific)
+  - Logar sillouette e elbow curve no mesmo gráfico
+  - Revisar lógica estratificação dos atributos dos corretores
+  - [STDBY] Avaliar novas colunas para inserir na etapa de clustering
+  - [x] Plotar distribuições para as colunas envolvidas
+  - Entender leitura sillouette/elbow 🟡
+  - Entender estratégias de normalização implementadas 🟡
+
+  ## SUBETAPA CLUSTERING_FIT (MODE_D specific)
+  - Mostrar e selecionar lista de colunas a serem alimentadas no treino só após CLUSTERING_FIT
+
+  ## SUBETAPA FEATURE SELECTION
   - [ ] Métodos paralelos de Análise de Importância
     - SHAP // Fornece sentido de relação (positivo, negativo)
     - Permutation Importance
     - RFE - Recursive Feature Elimination
   - [ ] Testar FS em grid
 
-  ## ETAPA TREINO
+  ## SUBETAPA TREINO
   - [ ] Avaliar implementação Modelos de ranking direto (LambdaMART, LambdaRank)
   - [ ] Eleger Top-K features com base em curva de desempenho (AUC-PR x número de features)
   - [ ] Entender como trabalhar com calibração do score e influência decisão de threshold
     - Platt Scaling, Isotonic Regression
-  - [ ] Avaliar anomalias em EVAL
   - [ ] Entender como fica a métrica para a distribuição (talvez ranking puro não sirva)
   - [ ] Ver diferença de métricas no output da célula de execução
-  - Ajustar número de colunas que entram no modelo (tenho as pinnadas + as resultantes de FS, mas tenho que inserir um limite)
+  - [ ] Ajustar número de colunas que entram no modelo (tenho as pinnadas + as resultantes de FS, mas tenho que inserir um limite)
+  - [STDBY] Inserir variação de parâmetros de clustering em grid de treinamento (T_TREINO)
+  - Verificar ajuste número de colunas inseridas no treinamento [MODE_C, MODE_D] 🔴
+
+
 
 ## 4_INFERENCIA
 
