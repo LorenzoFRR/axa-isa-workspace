@@ -17,7 +17,7 @@ OBS: Materiais de entregas estão no Confluence: https://pswdigital.atlassian.ne
 # ###################################################################
 
 # Definição desenvolvimento 30/03
-- Pipeline demais segmentações 🔵
+- Pipeline demais segmentações 🔵 OK
 - Pipeline distribuição 🔵
 - Desenvolvimento V11 - [BACKLOG_CLUSTERING.md] 🔵
 
@@ -37,15 +37,11 @@ OBS: Materiais de entregas estão no Confluence: https://pswdigital.atlassian.ne
 - [ ] Definir acompanhamento/gerenciamento projeto 🔴
 
 # Desenvolvimento
-- [ ] Estudar AI/ML Databricks
-  - Models?
+- [ ] Estudar seção AI/ML Databricks
+  - Models
 - [ ] Revisar CLAUDE.md
 - [ ] Unity Catalog 🔴
-- [ ] Pipeline demais segmentações 🔵
-  - [x] SEGURO_NOVO_MANUAL
-  - [x] RENOVACAO_MANUAL
-  - [x] SEGURO_NOVO_DIGITAL
-  - [x] RENOVACAO_DIGITAL
+- [x] Pipeline demais segmentações 🔵 OK
 - [ ] Pipeline distribuição 🔵
 
 ## 0_INGESTAO
@@ -84,6 +80,7 @@ OBS: Materiais de entregas estão no Confluence: https://pswdigital.atlassian.ne
   - [ ] Avaliar anomalias em EVAL
   - [ ] Entender como fica a métrica para a distribuição (talvez ranking puro não sirva)
   - [ ] Ver diferença de métricas no output da célula de execução
+  - Ajustar número de colunas que entram no modelo (tenho as pinnadas + as resultantes de FS, mas tenho que inserir um limite)
 
 ## 4_INFERENCIA
 
@@ -93,6 +90,9 @@ OBS: Materiais de entregas estão no Confluence: https://pswdigital.atlassian.ne
 - [ ] p_emitida por cluster
 
 ## 6_REPORT
+- Ajustar visualização temporal/precision_monthly.png (mostrar para a segmentação correspondente)
+- Logar colunas alimentadas nos modelos
+- Logar informações de clustering, caso seja MODE_D
 - [ ] Análise de resultados
   - Estratificar análises por linha de produto
   - Lógica de report automático

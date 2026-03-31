@@ -13,8 +13,8 @@ import mlflow
 # =========================
 EXPERIMENT_NAME = "/Users/psw.service@pswdigital.com.br/ISA_DEV/ISA_EXP"
 PR_COMP_NAME            = "T_PR_COMP"
-MODE_CODE               = "C"
-COMP_VERSAO             = "V10.0.0"
+MODE_CODE               = "D"
+COMP_VERSAO             = "V11.0.0"
 VERSAO_REF              = COMP_VERSAO
 
 TS_EXEC    = datetime.now(ZoneInfo("America/Sao_Paulo")).strftime("%Y%m%d_%H%M%S")
@@ -29,8 +29,8 @@ PR_COMP_RUN_ID_OVERRIDE = "9db9936565ce4512aab8966c638c6897"
 # =========================
 # INPUT
 # =========================
-INFERENCIA_TABLE_FQN = "gold.cotacao_inferencia_mode_c_renovacao_digital_20260330_134607"  # <<< AJUSTE
-SEG_TARGET           = "RENOVACAO_DIGITAL"                   # <<< AJUSTE
+INFERENCIA_TABLE_FQN = "gold.cotacao_inferencia_mode_d_seguro_novo_manual_20260331_141257"  # <<< AJUSTE
+SEG_TARGET           = "SEGURO_NOVO_MANUAL"                   # <<< AJUSTE
 
 # =========================
 # MODELOS
@@ -43,7 +43,7 @@ MODEL_IDS = []
 # =========================
 # run_id do exec run T_TREINO — necessário para carregar os thresholds de cada modelo.
 # Se vazio, thresholds não são anotados nos gráficos.
-TREINO_EXEC_RUN_ID = "6857411f8da449eeaac0e432fcf7edcd"   # <<< AJUSTE
+TREINO_EXEC_RUN_ID = "06fb1d34957b46ae9ae5848d512aaad0"   # <<< AJUSTE
 
 # =========================
 # REFERÊNCIA AO JOIN

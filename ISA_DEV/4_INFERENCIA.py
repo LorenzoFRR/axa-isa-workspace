@@ -14,8 +14,8 @@ import uuid
 EXPERIMENT_NAME = "/Users/psw.service@pswdigital.com.br/ISA_DEV/ISA_EXP"
 
 PR_INF_NAME = "T_PR_INFERENCIA"
-MODE_CODE   = "C"
-INF_VERSAO  = "V10.0.0"
+MODE_CODE   = "D"
+INF_VERSAO  = "V11.0.0"
 VERSAO_REF  = INF_VERSAO
 
 TS_EXEC    = datetime.now(ZoneInfo("America/Sao_Paulo")).strftime("%Y%m%d_%H%M%S")
@@ -31,8 +31,8 @@ PR_INF_RUN_ID_OVERRIDE = "e7af2dc5cb8b45c194656889f4b28fd2"
 # REFERÊNCIA AO TREINO
 # =========================
 # run_id do exec run T_TREINO (run_role=exec, step=TREINO) — impresso no final do 3_TREINO_MODE_C
-TREINO_EXEC_RUN_ID = "6857411f8da449eeaac0e432fcf7edcd"   # <<< OBRIGATÓRIO
-SEG_TARGET = "RENOVACAO_DIGITAL"   # <<< AJUSTE
+TREINO_EXEC_RUN_ID = "06fb1d34957b46ae9ae5848d512aaad0"   # <<< OBRIGATÓRIO
+SEG_TARGET = "SEGURO_NOVO_MANUAL"   # <<< AJUSTE
 
 # =========================
 # MODELOS A INFERIR
@@ -68,7 +68,7 @@ OUTROS_LABEL = "OUTROS"   # constante usada na truncagem; deve coincidir com o t
 # INPUT / OUTPUT
 # =========================
 # df_validacao gerado pelo 3_TREINO_MODE_C (logado como param 'df_validacao_fqn')
-INPUT_TABLE_FQN = "gold.cotacao_validacao_20260330_100116_c51aae1f"   # <<< AJUSTE
+INPUT_TABLE_FQN = "gold.cotacao_validacao_d_20260331_134339_e378e6bd"   # <<< AJUSTE
 
 OUT_SCHEMA       = "gold"
 OUTPUT_TABLE_FQN = f"{OUT_SCHEMA}.cotacao_inferencia_mode_{MODE_CODE.lower()}_{SEG_SLUG}_{TS_EXEC}"

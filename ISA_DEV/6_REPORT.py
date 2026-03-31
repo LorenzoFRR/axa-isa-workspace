@@ -13,8 +13,8 @@ import mlflow
 # =========================
 EXPERIMENT_NAME  = "/Users/psw.service@pswdigital.com.br/ISA_DEV/ISA_EXP"
 PR_REPORT_NAME   = "T_PR_REPORT"
-MODE_CODE        = "C"
-REPORT_VERSAO    = "V1.0.0"
+MODE_CODE        = "D"
+REPORT_VERSAO    = "V11.0.0"
 VERSAO_REF       = REPORT_VERSAO
 
 TS_EXEC    = datetime.now(ZoneInfo("America/Sao_Paulo")).strftime("%Y%m%d_%H%M%S")
@@ -24,24 +24,24 @@ def run_name_vts(base: str) -> str:
     return f"{base}_{TS_EXEC}"
 
 # Override: preencha para reutilizar container PR existente
-PR_RUN_ID_OVERRIDE = ""
+PR_RUN_ID_OVERRIDE = "9b454375419d4a53a375c09107383eb7"
 
 # =========================
 # INPUTS — run IDs de referência
 # =========================
 # run_id do exec run de 1_PRE_PROC (etapa PRE_PROC)
-PRE_PROC_EXEC_RUN_ID       = ""   # <<< AJUSTE
+PRE_PROC_EXEC_RUN_ID       = "f483375384a44609a348f6069c52ac47"   # <<< AJUSTE
 
 # run_id do exec run T_PRE_PROC_MODEL_YYYYMMDD_HHMMSS (dentro de 3_TREINO)
-PRE_PROC_MODEL_EXEC_RUN_ID = ""   # <<< AJUSTE
+PRE_PROC_MODEL_EXEC_RUN_ID = "8e4fb777717a4f32a5c248f34fd38211"   # <<< AJUSTE
 
 # run_id do exec run T_FEATURE_SELECTION_YYYYMMDD_HHMMSS
-FS_EXEC_RUN_ID             = ""   # <<< AJUSTE
+FS_EXEC_RUN_ID             = "43aaf653ea4e4ce8803dde8192d24ca3"   # <<< AJUSTE
 
 # run_id do exec run T_COMP_YYYYMMDD_HHMMSS
-COMP_EXEC_RUN_ID           = ""   # <<< AJUSTE
+COMP_EXEC_RUN_ID           = "70c2497599e54b598c650b9419eb4760"   # <<< AJUSTE
 
-print("✅ CONFIG REPORT MODE_C carregada")
+print(f"✅ CONFIG REPORT MODE_{MODE_CODE} carregada")
 print("• mode                     :", MODE_CODE, "| versão:", REPORT_VERSAO)
 print("• pre_proc_exec_run_id     :", PRE_PROC_EXEC_RUN_ID)
 print("• pre_proc_model_exec_run_id:", PRE_PROC_MODEL_EXEC_RUN_ID)
