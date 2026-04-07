@@ -1,4 +1,9 @@
 # Databricks notebook source
+# MAGIC %pip install --upgrade matplotlib
+# MAGIC %restart_python
+
+# COMMAND ----------
+
 # MAGIC %md
 # MAGIC ## Configs
 
@@ -23,8 +28,8 @@ MODE_RUN_ID_OVERRIDE = "bb141e3ebebe418792b1eaf0e11470ea"
 STEP_PRE_PROC_RUN_ID_OVERRIDE    = "e47065a88ba24df9b3016622e6808bc7"
 STEP_CLF_EXPLORE_RUN_ID_OVERRIDE = "53a439c937be4fd3903af3d1a29ec1e5"
 STEP_CLF_FIT_RUN_ID_OVERRIDE     = "b1414fda9c5f4fe58af20ed5b619b0dd"
-STEP_FS_RUN_ID_OVERRIDE          = ""
-STEP_TREINO_RUN_ID_OVERRIDE      = ""
+STEP_FS_RUN_ID_OVERRIDE          = "af503292cd0e468daae4dcf4d34cbca4"
+STEP_TREINO_RUN_ID_OVERRIDE      = "6bd4649aba834e019f2c825068745dfa"
 
 STEP_PRE_PROC_NAME    = "T_PRE_PROC_MODEL"
 STEP_CLF_EXPLORE_NAME = "T_CLUSTERING_EXPLORE"
@@ -68,8 +73,7 @@ SEG_COL              = "SEG"
 DATE_COL             = "DATA_COTACAO"
 ALLOWED_FINAL_STATUS = ["Emitida", "Perdida"]
 VALID_FRAC           = 0.20
-SPLIT_SALT           = "split_c1_seg_mes"  # <<< mesmo do MODE_C — mantido para comparabilidade
-
+SPLIT_SALT           = "split_c1_seg_mes"  
 DO_PROFILE = True
 
 # =========================
@@ -93,7 +97,7 @@ COLS_NEVER_FEATURE = [
 FEATURE_CANDIDATES = {
     "VL_PREMIO_ALVO":                            True,   # decimal(17,2)
     "INTERMENDIARIO_PERFIL":                     True,   # string
-    "DT_INICIO_VIGENCIA":                        True,   # date
+    "DT_INICIO_VIGENCIA":                        False,   # date
     "VL_PREMIO_LIQUIDO":                         True,   # decimal(17,2)
     "VL_PRE_TOTAL":                              True,   # decimal(17,2)
     "DS_PRODUTO_NOME":                           True,   # string
@@ -124,13 +128,13 @@ CLUSTER_SEG_FILTER  = None  # <<< AJUSTE — None ou SEG_TARGET
 CLF_RANDOM_SEED     = 42
 CLF_NULL_STRATEGY   = "drop"            # "drop" | "impute_median"
 CLF_FEATURES        = ["hr_mean", "cotacao_mean", "n_produtos"]
-CLF_K_RANGE_EXPLORE = [2, 3, 4, 5, 6, 7]  # <<< AJUSTE — range para elbow + silhouette
+CLF_K_RANGE_EXPLORE = [2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15]  # <<< AJUSTE — range para elbow + silhouette
 CLF_SCALE_STRATEGIES = ["standard", "log1p_standard", "robust"]  # exploradas simultaneamente no EXPLORE
 
 # =========================
 # FS — params
 # =========================
-FS_SEEDS      = [42] # , 123, 7
+FS_SEEDS      = [42, 123, 7]
 FS_TRAIN_FRAC = 0.70
 
 FS_METHODS_CONFIG = {
@@ -150,6 +154,12 @@ TOPK_LIST = [5]  # <<< AJUSTE — feature sets gerados pelo FS (usados em TREINO
 TREINO_FEATURE_SET_KEY = "top_5"         # <<< AJUSTE após T_FS
 TREINO_FEATURES_PINNED = ["CLF_CORRETOR"]  # <<< AJUSTE
 
+# Modo de seleção de colunas para TREINO:
+#   "COLUNAS_FS"          — usa top-K do FS + TREINO_FEATURES_PINNED (comportamento padrão)
+#   "COLUNAS_ARBITRARIAS" — preencher TREINO_COLUNAS_ARBITRARIAS na célula antes de T_TREINO
+#                           (executar a célula de inspeção para ver colunas disponíveis)
+TREINO_COL_MODE = "COLUNAS_ARBITRARIAS"           # <<< AJUSTE
+
 USE_CLASS_WEIGHT       = "auto"   # "auto" | True | False
 CLASS_WEIGHT_THRESHOLD = 0.30
 
@@ -158,16 +168,16 @@ CV_SEED   = 42
 CV_METRIC = "areaUnderPR"
 
 GBT_PARAM_GRID = {
-    "maxDepth": [4], # , 6
-    "stepSize": [0.1], # , 0.05
-    "maxIter":  50,
+    "maxDepth": [4, 6],
+    "stepSize": [0.1, 0.05],
+    "maxIter":  100,
 }
-GBT_MAXITER_FINAL = 100
+GBT_MAXITER_FINAL = 150
 
 EVAL_CRITERION        = "max_f1"   # "max_f1" | "max_f2" | "precision_ge_target"
 EVAL_PRECISION_TARGET = 0.4
 
-print("✅ CONFIG MODE_D carregada")
+print(f"✅ CONFIG MODE_{MODE_CODE} carregada")
 print("• input               :", COTACAO_SEG_FQN)
 print("• mode                :", MODE_CODE)
 print("• versao              :", TREINO_VERSAO)
@@ -839,6 +849,7 @@ with _explore_step_ctx as _clf_explore_container:
             "clf_cluster_features":   json.dumps(CLF_FEATURES),
             "clf_cluster_seg_filter": str(CLUSTER_SEG_FILTER),
             "cotacao_seg_fqn":        COTACAO_SEG_FQN,
+            "seg_target":             SEG_TARGET,
             "pr_run_id":              PR_RUN_ID,
             "mode_run_id":            MODE_RUN_ID,
         })
@@ -913,22 +924,6 @@ with _explore_step_ctx as _clf_explore_container:
             _pct_levels  = [10, 25, 50, 75, 90]
             _pct_colors  = {10: "red", 25: "orange", 50: "green", 75: "orange", 90: "red"}
             _pct_ls      = {10: "--",  25: "--",     50: "-",     75: "--",     90: "--"}
-            # for _col in CLF_FEATURES:
-            #     _vals = pdf_fit[_col].dropna().values
-            #     _pcts = {p: float(np.percentile(_vals, p)) for p in _pct_levels}
-            #     fig, ax = plt.subplots(figsize=(8, 4))
-            #     ax.hist(_vals, bins=50, color="steelblue", edgecolor="none", alpha=0.8)
-            #     for _p_lvl, _p_val in _pcts.items():
-            #         ax.axvline(_p_val, color=_pct_colors[_p_lvl], linestyle=_pct_ls[_p_lvl],
-            #                    linewidth=1.2, label=f"p{_p_lvl}={_p_val:.2f}")
-            #     ax.set_xlabel(_col)
-            #     ax.set_ylabel("Frequência")
-            #     ax.set_title(f"Distribuição bruta — {_col}")
-            #     ax.legend(fontsize=8)
-            #     _p = os.path.join(_tmpdir_raw, f"dist_raw_{_col}.png")
-            #     fig.savefig(_p, bbox_inches="tight", dpi=120)
-            #     plt.close(fig)
-            #     mlflow.log_artifact(_p, artifact_path="clustering/explore/raw")
 
             for _col in CLF_FEATURES:
                 # Cast to float to avoid decimal.Decimal issues
@@ -1052,7 +1047,7 @@ print("\n• Inspecionar clustering/explore/{strategy}/ no MLflow antes de preen
 # ============================================================
 # DECISION CELL — preencher após inspecionar MLflow
 # ============================================================
-CLF_K_FINAL              = 5                  # <<< AJUSTE após ver elbow + silhouette por estratégia
+CLF_K_FINAL              = 7                  # <<< AJUSTE após ver elbow + silhouette por estratégia
 CLF_SCALE_STRATEGY_FINAL = "log1p_standard"   # <<< AJUSTE — "standard" | "log1p_standard" | "robust"
 
 assert CLF_SCALE_STRATEGY_FINAL in CLF_SCALE_STRATEGIES, \
@@ -1096,6 +1091,7 @@ with _fit_step_ctx as _clf_fit_container:
             "clf_scale_strategy_final": CLF_SCALE_STRATEGY_FINAL,
             "df_model_fqn":             DF_MODEL_FQN,
             "df_valid_fqn":             DF_VALID_FQN,
+            "seg_target":               SEG_TARGET,
             "pr_run_id":                PR_RUN_ID,
             "mode_run_id":              MODE_RUN_ID,
         })
@@ -1297,6 +1293,27 @@ print("• df_model    :", DF_MODEL_FQN, f"({n_model_total} linhas)")
 print("• df_validacao:", DF_VALID_FQN, f"({n_valid_total} linhas)")
 for i in range(CLF_K_FINAL):
     print(f"  cluster {i}: {clf_cluster_dist[f'clf_cluster_{i}_n_corretores']} corretores")
+
+# COMMAND ----------
+
+# MAGIC %md
+# MAGIC ### Revisão — FEATURE_CANDIDATES antes do FS
+# MAGIC
+# MAGIC Executar para confirmar os toggles ativos antes de rodar T_FEATURE_SELECTION.
+# MAGIC `CLF_CORRETOR` foi adicionada ao dataframe por T_CLUSTERING_FIT e já está disponível.
+
+# COMMAND ----------
+
+_fc_enabled_review  = [c for c, v in FEATURE_CANDIDATES.items() if v]
+_fc_disabled_review = [c for c, v in FEATURE_CANDIDATES.items() if not v]
+
+print(f"FEATURE_CANDIDATES — {len(_fc_enabled_review)} habilitadas / {len(_fc_disabled_review)} desabilitadas")
+print()
+print(f"  Habilitadas  ({len(_fc_enabled_review)}): {_fc_enabled_review}")
+print(f"  Desabilitadas ({len(_fc_disabled_review)}): {_fc_disabled_review}")
+print()
+print("ℹ️  CLF_CORRETOR foi adicionada ao dataframe por T_CLUSTERING_FIT.")
+print("   Se CLF_CORRETOR=True acima, ela entrará no FS como feature categórica.")
 
 # COMMAND ----------
 
@@ -1787,6 +1804,47 @@ with mlflow.start_run(**_fs_kw, nested=True) as fs_container:
 # COMMAND ----------
 
 # MAGIC %md
+# MAGIC ### Inspeção — colunas disponíveis para TREINO
+# MAGIC
+# MAGIC Executar esta célula antes de preencher `TREINO_COLUNAS_ARBITRARIAS` na Config.
+# MAGIC Lista todas as colunas elegíveis após FS (sobreviventes de PP_R04 / R05 / R06).
+
+# COMMAND ----------
+
+_available_for_treino = sorted(FS_CAT_COLS_FINAL + FS_NUM_COLS_FINAL)
+_schema_avail         = dict(spark.table(DF_MODEL_FQN).dtypes)
+
+print(f"Colunas disponíveis para TREINO ({len(_available_for_treino)} total):")
+print()
+for _c in _available_for_treino:
+    _tipo     = _schema_avail.get(_c, "?")
+    _categoria = "[CAT]" if _c in FS_CAT_COLS_FINAL else "[NUM]"
+    print(f"  {_categoria}  {_c}  ({_tipo})")
+
+# COMMAND ----------
+
+# MAGIC %md
+# MAGIC ### Config — TREINO_COLUNAS_ARBITRARIAS
+# MAGIC
+# MAGIC Preencher apenas se `TREINO_COL_MODE == "COLUNAS_ARBITRARIAS"`.
+# MAGIC Ver output da célula de inspeção acima para escolher as colunas.
+
+# COMMAND ----------
+
+TREINO_COLUNAS_ARBITRARIAS = [
+  "DIAS_COTACAO",
+  "DIAS_INICIO_VIGENCIA",
+  "VL_PRE_TOTAL",
+  "DIAS_ULTIMA_ATUALIZACAO",
+  "VL_PREMIO_LIQUIDO",
+  "DIAS_VALIDADE",
+  "CLF_CORRETOR",
+  "DS_PRODUTO_NOME"
+  ]
+
+# COMMAND ----------
+
+# MAGIC %md
 # MAGIC ## T_TREINO
 
 # COMMAND ----------
@@ -1794,16 +1852,30 @@ with mlflow.start_run(**_fs_kw, nested=True) as fs_container:
 # MAGIC %md
 # MAGIC ### Config — T_TREINO
 # MAGIC
-# MAGIC Ajustar `TREINO_FEATURE_SET_KEY` com base nos resultados do FS acima.
+# MAGIC Ajustar `TREINO_FEATURE_SET_KEY` (modo `COLUNAS_FS`) ou `TREINO_COLUNAS_ARBITRARIAS`
+# MAGIC (modo `COLUNAS_ARBITRARIAS`) com base nos resultados do FS acima.
 
 # COMMAND ----------
 
-_topk_cols      = FS_FEATURE_SETS[TREINO_FEATURE_SET_KEY]
-_pinned_valid   = [c for c in TREINO_FEATURES_PINNED if c in FS_CAT_COLS_FINAL + FS_NUM_COLS_FINAL]
-_pinned_invalid = [c for c in TREINO_FEATURES_PINNED if c not in FS_CAT_COLS_FINAL + FS_NUM_COLS_FINAL]
-if _pinned_invalid:
-    print(f"⚠️  TREINO_FEATURES_PINNED ignoradas (não habilitadas em FEATURE_CANDIDATES): {_pinned_invalid}")
-TREINO_FEATURE_COLS = list(dict.fromkeys(_topk_cols + _pinned_valid))
+if TREINO_COL_MODE == "COLUNAS_FS":
+    _topk_cols      = FS_FEATURE_SETS[TREINO_FEATURE_SET_KEY]
+    _pinned_valid   = [c for c in TREINO_FEATURES_PINNED if c in FS_CAT_COLS_FINAL + FS_NUM_COLS_FINAL]
+    _pinned_invalid = [c for c in TREINO_FEATURES_PINNED if c not in FS_CAT_COLS_FINAL + FS_NUM_COLS_FINAL]
+    if _pinned_invalid:
+        print(f"⚠️  TREINO_FEATURES_PINNED ignoradas (não habilitadas em FEATURE_CANDIDATES): {_pinned_invalid}")
+    TREINO_FEATURE_COLS = list(dict.fromkeys(_topk_cols + _pinned_valid))
+
+elif TREINO_COL_MODE == "COLUNAS_ARBITRARIAS":
+    _available      = FS_CAT_COLS_FINAL + FS_NUM_COLS_FINAL
+    _invalid_arb    = [c for c in TREINO_COLUNAS_ARBITRARIAS if c not in _available]
+    if not TREINO_COLUNAS_ARBITRARIAS:
+        raise ValueError("❌ TREINO_COL_MODE='COLUNAS_ARBITRARIAS' mas TREINO_COLUNAS_ARBITRARIAS está vazia.")
+    if _invalid_arb:
+        raise ValueError(f"❌ Colunas inválidas em TREINO_COLUNAS_ARBITRARIAS: {_invalid_arb}\nDisponíveis: {_available}")
+    TREINO_FEATURE_COLS = TREINO_COLUNAS_ARBITRARIAS
+
+else:
+    raise ValueError(f"❌ TREINO_COL_MODE inválido: '{TREINO_COL_MODE}'. Use 'COLUNAS_FS' ou 'COLUNAS_ARBITRARIAS'.")
 
 ID_COLS            = [ID_COL, "CD_DOC_CORRETOR", "TS_ARQ", SEG_COL, DATE_COL]
 DROP_FROM_FEATURES = ID_COLS + [STATUS_COL]
@@ -1811,7 +1883,7 @@ DROP_FROM_FEATURES = ID_COLS + [STATUS_COL]
 print("✅ T_TREINO inputs:")
 print("• df_model_fqn :", DF_MODEL_FQN)
 print("• df_valid_fqn :", DF_VALID_FQN)
-print("• feature_set  :", TREINO_FEATURE_SET_KEY, "→", TREINO_FEATURE_COLS)
+print("• col_mode     :", TREINO_COL_MODE, "→", TREINO_FEATURE_COLS)
 print("• use_cw       :", USE_CLASS_WEIGHT, "| threshold:", CLASS_WEIGHT_THRESHOLD)
 print("• cv_folds     :", CV_FOLDS, "| cv_seed:", CV_SEED)
 print("• param_grid   :", GBT_PARAM_GRID)
@@ -2282,7 +2354,7 @@ print("• Modelos treinados  :", list(TRAINED_MODELS.keys()))
 print("\nEVAL:")
 for mid, r in eval_results.items():
     print(f"• {mid}: τ={r['threshold']}  P={r['precision']}  R={r['recall']}  F1={r['f1']}  F2={r['f2']}")
-print("\n⚠️  Anotar TREINO_EXEC_RUN_ID para uso no 4_INFERENCIA_MODE_D e 5_COMP_MODE_D:")
+print(f"\n⚠️  Anotar TREINO_EXEC_RUN_ID para uso no 4_INFERENCIA_MODE_{MODE_CODE} e 5_COMP_MODE_{MODE_CODE}:")
 print(f"    TREINO_EXEC_RUN_ID = \"{TREINO_EXEC_RUN_ID}\"")
 
 # COMMAND ----------

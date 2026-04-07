@@ -123,6 +123,26 @@ SEG_TARGET         = _comp_params.get("seg_target", "N/A")
 VERSAO             = _comp_params.get("versao_ref", "N/A")
 TREINO_EXEC_RUN_ID = _comp_params.get("treino_exec_run_id", "")
 
+# ── feature_cols do T_TREINO ──────────────────────────────────────────────
+FEATURE_COLS = None
+N_FEATURES   = None
+
+if TREINO_EXEC_RUN_ID:
+    try:
+        _treino_params    = client.get_run(TREINO_EXEC_RUN_ID).data.params
+        _feature_cols_raw = _treino_params.get("feature_cols")
+        if _feature_cols_raw:
+            FEATURE_COLS = json.loads(_feature_cols_raw)
+            N_FEATURES   = len(FEATURE_COLS)
+    except Exception as _e:
+        print(f"⚠️  feature_cols não carregadas: {_e}")
+
+# ── Detecta clustering: tag do COMP run (nova) ou existência de métricas de cluster (fallback) ──
+HAS_CLUSTER = (
+    _comp_run.data.tags.get("cluster_analysis") == "executed"
+    or any("cluster" in k for k in _comp_run.data.metrics)
+)
+
 # ── n_df_model / n_df_validacao direto do PRE_PROC_MODEL exec run ─────────────
 N_DF_MODEL     = None
 N_DF_VALIDACAO = None
@@ -141,6 +161,8 @@ print("• seg_target    :", SEG_TARGET)
 print("• versão        :", VERSAO)
 print("• n_df_model    :", N_DF_MODEL if N_DF_MODEL is not None else "N/A")
 print("• n_df_validacao:", N_DF_VALIDACAO if N_DF_VALIDACAO is not None else "N/A")
+print("• n_features    :", N_FEATURES if N_FEATURES is not None else "N/A")
+print("• has_cluster   :", HAS_CLUSTER)
 
 # COMMAND ----------
 
@@ -166,6 +188,21 @@ if N_DF_MODEL is not None:
     mlflow.log_metric("n_df_model",     N_DF_MODEL)
 if N_DF_VALIDACAO is not None:
     mlflow.log_metric("n_df_validacao", N_DF_VALIDACAO)
+
+if FEATURE_COLS is not None:
+    mlflow.log_params({
+        "n_features":   N_FEATURES,
+        "feature_cols": json.dumps(FEATURE_COLS),
+    })
+
+# ── Re-loga métricas de clustering do COMP run (se HAS_CLUSTER) ──────────
+if HAS_CLUSTER:
+    _clf_metrics = {k: v for k, v in _comp_run.data.metrics.items() if "cluster" in k}
+    if _clf_metrics:
+        mlflow.log_metrics(_clf_metrics)
+        print(f"✅ {len(_clf_metrics)} métricas de clustering re-logadas do COMP")
+    else:
+        print("⚠️  HAS_CLUSTER=True mas nenhuma métrica de cluster encontrada no COMP run")
 
 # metadata.json — resumo legível na raiz dos artefatos
 _metadata = {

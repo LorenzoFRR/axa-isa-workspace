@@ -53,6 +53,13 @@ TREINO_EXEC_RUN_ID = "06fb1d34957b46ae9ae5848d512aaad0"   # <<< AJUSTE
 JOIN_EXEC_RUN_ID = "28fbd7c3809e4eb0b437956b7af15dd8"   # <<< AJUSTE
 
 # =========================
+# REFERÊNCIA AO CLUSTERING (apenas MODE_D)
+# =========================
+# run_id do exec run T_CLUSTERING_FIT — opcional.
+# Se preenchido, enriquece clustering/cluster_profile.json com centroides do fitting.
+CLF_FIT_EXEC_RUN_ID = ""  # <<< AJUSTE (apenas MODE_D)
+
+# =========================
 # PARÂMETROS DE ANÁLISE
 # =========================
 TOPK_STEP    = 1    # passo da varredura K% (1 = K=1%,2%,...,100%)
@@ -61,9 +68,10 @@ TOPK_REF_PCT = 15   # K% de referência para Bloco 5 (temporal) e Bloco 6 (sele�
 # =========================
 # Colunas esperadas
 # =========================
-STATUS_COL = "DS_GRUPO_STATUS"
-DATE_COL   = "DATA_COTACAO"
-SEG_COL    = "SEG"
+STATUS_COL       = "DS_GRUPO_STATUS"
+DATE_COL         = "DATA_COTACAO"
+SEG_COL          = "SEG"
+CLF_CORRETOR_COL = "CLF_CORRETOR"
 
 print("✅ CONFIG COMP MODE_C carregada")
 print("• input table  :", INFERENCIA_TABLE_FQN)
@@ -220,9 +228,16 @@ if N == 0:
 n_pos     = int(df.agg(F.sum("label_real")).collect()[0][0] or 0)
 base_rate = n_pos / N
 
+HAS_CLUSTER = (MODE_CODE == "D") and (CLF_CORRETOR_COL in df.columns)
+if HAS_CLUSTER:
+    print(f"• CLF_CORRETOR detectado — análise por cluster será executada (Bloco 7)")
+elif MODE_CODE == "D":
+    print(f"⚠️  MODE_D detectado mas CLF_CORRETOR ausente — análise por cluster será pulada")
+
 # Collect para pandas — usado em todos os blocos
 _collect_cols = list(dict.fromkeys(
     ["label_real", STATUS_COL, "MES"] + p_cols + rk_cols
+    + ([CLF_CORRETOR_COL] if HAS_CLUSTER else [])
 ))
 pdf = df.select(*[c for c in _collect_cols if c in df.columns]).toPandas()
 
@@ -247,7 +262,8 @@ K_PCTS = list(range(1, 101, TOPK_STEP))
 
 # ── Carregar thresholds do treino (opcional) ──────────────────────────────────
 client = MlflowClient()
-MODEL_THRESHOLDS = {}   # model_id → tau (float) ou None
+MODEL_THRESHOLDS    = {}   # model_id → tau (float) ou None
+MODEL_EVAL_SUMMARIES = {}  # model_id → full eval_summary dict (reutilizado em model_configs)
 
 if TREINO_EXEC_RUN_ID:
     for _mid in MODEL_IDS_USED:
@@ -258,6 +274,7 @@ if TREINO_EXEC_RUN_ID:
                 )
                 with open(_local) as _f:
                     _summary = json.load(_f)
+            MODEL_EVAL_SUMMARIES[_mid] = _summary
             MODEL_THRESHOLDS[_mid] = float(_summary["threshold"])
         except Exception as _e:
             print(f"⚠️  Threshold para {_mid} não carregado: {_e}")
@@ -290,11 +307,99 @@ if JOIN_EXEC_RUN_ID:
 else:
     print("• JOIN_EXEC_RUN_ID não preenchido — barras de status não serão adicionadas ao gráfico temporal")
 
+# ── Carregar FQNs de cotacao_model e cotacao_validacao do treino (opcional) ───
+_df_model_fqn = None
+_df_valid_fqn = None
+
+if TREINO_EXEC_RUN_ID:
+    try:
+        _treino_params = client.get_run(TREINO_EXEC_RUN_ID).data.params
+        _df_model_fqn = _treino_params.get("df_model_fqn")
+        _df_valid_fqn = _treino_params.get("df_valid_fqn")
+        if _df_model_fqn and _df_valid_fqn:
+            print(f"• tabelas model/valid: {_df_model_fqn} | {_df_valid_fqn}")
+        else:
+            print("⚠️  FQNs de model/valid não encontrados nos params do treino")
+    except Exception as _e:
+        print(f"⚠️  FQNs de model/valid não carregados: {_e}")
+else:
+    print("• TREINO_EXEC_RUN_ID não preenchido — gráficos temporais de model/valid não serão gerados")
+
 print("✅ Dados carregados")
 print(f"• n_rows={N}  n_pos={n_pos}  base_rate={base_rate:.4f}")
 print(f"• model_ids : {MODEL_IDS_USED}")
 print(f"• PR  : {PR_COMP_NAME} ({_pr_status})")
 print(f"• EXEC: {RUN_COMP_EXEC}")
+
+# COMMAND ----------
+
+# MAGIC %md
+# MAGIC ## Bloco 0 — Configurações de modelos (model_configs)
+
+# COMMAND ----------
+
+# feature_cols é obrigatório — requer TREINO_EXEC_RUN_ID preenchido
+if not TREINO_EXEC_RUN_ID:
+    raise ValueError(
+        "❌ TREINO_EXEC_RUN_ID não preenchido. "
+        "feature_cols é obrigatório em model_configs — preencha TREINO_EXEC_RUN_ID na Config."
+    )
+
+_treino_run_params = client.get_run(TREINO_EXEC_RUN_ID).data.params
+
+# feature_cols: obrigatório — logado como param no T_TREINO tanto em MODE_C quanto MODE_D
+_raw_feature_cols = _treino_run_params.get("feature_cols")
+if not _raw_feature_cols:
+    raise ValueError(
+        f"❌ Param 'feature_cols' ausente no run TREINO_EXEC_RUN_ID={TREINO_EXEC_RUN_ID}. "
+        "Verifique se o run_id aponta para T_TREINO (etapa=TREINO, step=TREINO)."
+    )
+_GLOBAL_FEATURE_COLS = json.loads(_raw_feature_cols)
+
+# Params opcionais — compatíveis com MODE_C e MODE_D
+_tp_feature_set   = _treino_run_params.get("feature_set")
+_tp_pinned        = _treino_run_params.get("treino_features_pinned")
+_tp_use_cw        = _treino_run_params.get("use_class_weight")
+_tp_treino_versao = _treino_run_params.get("treino_versao")
+_tp_eval_crit     = _treino_run_params.get("eval_criterion")
+_tp_eval_prec_tgt = _treino_run_params.get("eval_precision_target")
+
+for _mid in MODEL_IDS_USED:
+    _cfg = {
+        "model_id":               _mid,
+        "mode_code":              MODE_CODE,
+        "treino_exec_run_id":     TREINO_EXEC_RUN_ID,
+        "treino_versao":          _tp_treino_versao,
+        "seg_target":             _treino_run_params.get("seg_target", SEG_TARGET),
+        "feature_cols":           _GLOBAL_FEATURE_COLS,
+        "n_features":             len(_GLOBAL_FEATURE_COLS),
+        "feature_set":            _tp_feature_set,
+        "treino_features_pinned": json.loads(_tp_pinned) if _tp_pinned else [],
+        "use_class_weight":       _tp_use_cw,
+        "eval_criterion":         _tp_eval_crit,
+        "eval_precision_target":  float(_tp_eval_prec_tgt) if _tp_eval_prec_tgt else None,
+    }
+
+    # Enriquecer com eval_summary (threshold + métricas no ponto de corte)
+    _es = MODEL_EVAL_SUMMARIES.get(_mid, {})
+    if _es:
+        _cfg["threshold"]      = _es.get("threshold")
+        _cfg["eval_precision"] = _es.get("precision")
+        _cfg["eval_recall"]    = _es.get("recall")
+        _cfg["eval_f1"]        = _es.get("f1")
+        _cfg["eval_f2"]        = _es.get("f2")
+    else:
+        _cfg["threshold"] = MODEL_THRESHOLDS.get(_mid)
+
+    # MODE_D: incluir referência ao clustering se disponível
+    if MODE_CODE == "D" and CLF_FIT_EXEC_RUN_ID:
+        _cfg["clf_fit_exec_run_id"] = CLF_FIT_EXEC_RUN_ID
+
+    mlflow.log_dict(_cfg, f"model_configs/{_mid}/config.json")
+
+print(f"✅ Bloco 0 — model_configs: {len(MODEL_IDS_USED)} config(s) logadas")
+for _mid in MODEL_IDS_USED:
+    print(f"  • model_configs/{_mid}/config.json  (feature_cols: {len(_GLOBAL_FEATURE_COLS)} features)")
 
 # COMMAND ----------
 
@@ -701,86 +806,48 @@ else:
 # COMMAND ----------
 
 # MAGIC %md
-# MAGIC ## Bloco 5 — Estabilidade temporal (P@K_ref% por mês)
+# MAGIC ## Bloco 5 — Distribuição temporal de cotações (model / validação)
 
 # COMMAND ----------
 
-meses = sorted(pdf["MES"].dropna().unique().tolist())
+def _plot_cotacao_by_date(table_fqn: str, label: str, artifact_name: str):
+    """Gera gráfico de barras: contagem de cotações por DATA_COTACAO."""
+    _df = spark.read.table(table_fqn)
+    _df_agg = (
+        _df.withColumn("DATA_COTACAO_dt", F.to_date(F.col(DATE_COL)))
+        .filter(F.col("DATA_COTACAO_dt").isNotNull())
+        .groupBy("DATA_COTACAO_dt")
+        .agg(F.count("*").alias("qtd"))
+        .orderBy("DATA_COTACAO_dt")
+    )
+    _pdf_agg = _df_agg.toPandas()
 
-if len(meses) > 1:
-    temporal_rows = []
-    for mes in meses:
-        pdf_mes   = pdf[pdf["MES"] == mes].copy().reset_index(drop=True)
-        n_mes     = len(pdf_mes)
-        n_pos_mes = int((pdf_mes["label_real"] == 1).sum())
-        top_n_mes = max(1, round(TOPK_REF_PCT / 100.0 * n_mes))
-
-        for model_id in MODEL_IDS_USED:
-            # Recomputa rank local no mês (rank_global é global — não válido por mês)
-            p_col_m = f"p_emitida_{model_id}"
-            pdf_mes_sorted = pdf_mes.sort_values(p_col_m, ascending=False).reset_index(drop=True)
-            pdf_mes_sorted["rank_local"] = range(1, n_mes + 1)
-
-            mask_topk = pdf_mes_sorted["rank_local"] <= top_n_mes
-            tp = int((mask_topk & (pdf_mes_sorted["label_real"] == 1)).sum())
-
-            p_at_k_mes = tp / top_n_mes if top_n_mes > 0 else None
-
-            temporal_rows.append({
-                "mes": mes, "model_id": model_id,
-                "n_total": n_mes, "n_emitida": n_pos_mes,
-                "top_n": top_n_mes, "tp": tp,
-                "p_at_k": p_at_k_mes,
-                "base_rate_mes": round(n_pos_mes / n_mes, 6) if n_mes > 0 else None,
-            })
-
-    pdf_temporal = pd.DataFrame(temporal_rows)
-    log_csv(pdf_temporal, "temporal/monthly_stats.csv")
+    if _pdf_agg.empty:
+        print(f"⚠️  {label}: sem dados de DATA_COTACAO para plotar")
+        return
 
     fig, ax = plt.subplots(figsize=(14, 5))
-
-    # --- Barras empilhadas de status (eixo secundário, atrás das linhas) ---
-    ax2 = ax.twinx()
-    if _pdf_status_month is not None and not _pdf_status_month.empty:
-        _status_cols = [c for c in _pdf_status_month.columns if c != "MES"]
-        _sdf = _pdf_status_month[_pdf_status_month["MES"].isin(meses)].copy()
-        _sdf = _sdf.set_index("MES").reindex(meses).fillna(0)
-
-        _bottom = np.zeros(len(meses))
-        _bar_colors = plt.cm.Pastel1.colors
-        for _ci, _sc in enumerate(_status_cols):
-            _vals = _sdf[_sc].values.astype(float)
-            ax2.bar(range(len(meses)), _vals, bottom=_bottom,
-                    label=_sc, color=_bar_colors[_ci % len(_bar_colors)],
-                    alpha=0.45, zorder=1)
-            _bottom += _vals
-
-        ax2.set_ylabel("Qtd cotações (JOIN)")
-        ax2.legend(loc="upper left", fontsize=8, title="DS_GRUPO_STATUS")
-        ax2.yaxis.set_label_position("right")
-        ax2.yaxis.tick_right()
-
-    # --- Linhas de P@K (eixo principal, à frente) ---
-    for i, model_id in enumerate(MODEL_IDS_USED):
-        sub = pdf_temporal[pdf_temporal["model_id"] == model_id].sort_values("mes")
-        ax.plot(range(len(meses)), sub["p_at_k"].values,
-                color=model_color(i), marker="o", linewidth=1.5, label=model_id, zorder=3)
-
-    ax.set_xlabel("Mês")
-    ax.set_ylabel(f"P@{TOPK_REF_PCT}%")
-    ax.set_title(f"Estabilidade temporal — P@{TOPK_REF_PCT}% por mês (MODE_C | {SEG_TARGET})")
-    ax.set_xticks(range(len(meses)))
-    ax.set_xticklabels(meses, rotation=45, ha="right")
-    ax.grid(True, zorder=0)
-    ax.legend(loc="upper right")
-    ax.set_zorder(ax2.get_zorder() + 1)
-    ax.patch.set_visible(False)
+    ax.bar(
+        _pdf_agg["DATA_COTACAO_dt"].astype(str),
+        _pdf_agg["qtd"],
+        color="#4A90D9", edgecolor="white", linewidth=0.3,
+    )
+    ax.set_xlabel("DATA_COTACAO")
+    ax.set_ylabel("Qtd cotações")
+    ax.set_title(f"{label} — Contagem por DATA_COTACAO ({SEG_TARGET})\n{table_fqn}")
+    ax.tick_params(axis="x", rotation=45)
+    ax.grid(axis="y", alpha=0.3)
     plt.tight_layout()
-    log_png(fig, "temporal/precision_monthly.png")
+    log_png(fig, f"temporal/{artifact_name}")
+    print(f"  • {artifact_name} gerado ({len(_pdf_agg)} datas)")
 
-    print(f"✅ Bloco 5 — Temporal concluído ({len(meses)} meses | K_ref={TOPK_REF_PCT}%)")
+
+if _df_model_fqn and _df_valid_fqn:
+    _plot_cotacao_by_date(_df_model_fqn, "cotacao_model", "cotacao_model_by_date.png")
+    _plot_cotacao_by_date(_df_valid_fqn, "cotacao_validacao", "cotacao_validacao_by_date.png")
+    print(f"✅ Bloco 5 — Distribuição temporal concluída")
 else:
-    print(f"⚠️  Bloco 5 ignorado — apenas {len(meses)} mês(es) disponível(is)")
+    print("⚠️  Bloco 5 ignorado — FQNs de model/valid não disponíveis (preencha TREINO_EXEC_RUN_ID)")
 
 # COMMAND ----------
 
@@ -816,6 +883,294 @@ print(pdf_selection.to_string(index=False))
 # COMMAND ----------
 
 # MAGIC %md
+# MAGIC ## Bloco 7 — Análise por cluster (apenas MODE_D)
+
+# COMMAND ----------
+
+if not HAS_CLUSTER:
+    mlflow.set_tag("cluster_analysis", "skipped")
+    print("⚠️  Bloco 7 ignorado — HAS_CLUSTER=False (MODE_CODE != D ou CLF_CORRETOR ausente na tabela de inferência)")
+else:
+    mlflow.set_tag("cluster_analysis", "executed")
+
+    # ── Carregar cluster_summary do T_CLUSTERING_FIT (opcional) ──────────────────
+    _clf_summary_by_id = {}   # cluster_id (str) → dict com centroides e n_corretores
+
+    if CLF_FIT_EXEC_RUN_ID:
+        try:
+            with tempfile.TemporaryDirectory() as _td:
+                _local = client.download_artifacts(
+                    CLF_FIT_EXEC_RUN_ID, "clustering/cluster_summary.json", _td
+                )
+                with open(_local) as _f:
+                    _clf_summary_list = json.load(_f)
+            for _cs in _clf_summary_list:
+                _clf_summary_by_id[str(_cs["cluster"])] = _cs
+            mlflow.log_param("clf_fit_exec_run_id", CLF_FIT_EXEC_RUN_ID)
+            print(f"• cluster_summary carregado: {len(_clf_summary_by_id)} clusters")
+        except Exception as _e:
+            print(f"⚠️  cluster_summary não carregado: {_e}")
+    else:
+        print("• CLF_FIT_EXEC_RUN_ID não preenchido — centroides não incluídos em cluster_profile.json")
+
+    # Paleta de cores dedicada para clusters
+    _CLF_COLORS = [
+        "#e6194b", "#3cb44b", "#4363d8", "#f58231", "#911eb4",
+        "#42d4f4", "#f032e6", "#bfef45", "#fabed4", "#469990",
+    ]
+    def _clf_color(i): return _CLF_COLORS[i % len(_CLF_COLORS)]
+
+    # Clusters presentes em pdf (ordenados numericamente)
+    _cluster_ids = sorted(pdf[CLF_CORRETOR_COL].dropna().unique().tolist(), key=lambda x: int(x))
+    print(f"• clusters em df_inf: {_cluster_ids}")
+
+    # ── Bloco 7a: cluster_profile.json + métricas de classificação por cluster ────
+
+    _clf_profile_rows = []
+    _clf_metrics_rows = []   # acumula para metrics_summary.csv
+
+    for c_id in _cluster_ids:
+        mask_c  = pdf[CLF_CORRETOR_COL] == c_id
+        pdf_c   = pdf[mask_c].copy()
+        n_c     = len(pdf_c)
+        n_pos_c = int((pdf_c["label_real"] == 1).sum())
+        br_c    = n_pos_c / n_c if n_c > 0 else 0.0
+
+        # cluster_profile enriquecido com centroides se disponíveis
+        _cs_entry = _clf_summary_by_id.get(str(c_id), {})
+        _profile_row = {
+            "cluster":     c_id,
+            "n_cotacoes":  n_c,
+            "n_positivos": n_pos_c,
+            "base_rate":   round(br_c, 6),
+        }
+        if _cs_entry:
+            _profile_row["n_corretores"] = _cs_entry.get("n_corretores")
+            for _k, _v in _cs_entry.items():
+                if _k not in ("cluster", "n_corretores"):
+                    _profile_row[_k] = _v
+        _clf_profile_rows.append(_profile_row)
+
+        # Métricas de volume/base_rate logadas por cluster (independente de modelo)
+        mlflow.log_metrics({
+            f"n_cotacoes_cluster_{c_id}":  n_c,
+            f"n_positivos_cluster_{c_id}": n_pos_c,
+            f"base_rate_cluster_{c_id}":   round(br_c, 6),
+        })
+
+        # Métricas de classificação por modelo
+        for model_id in MODEL_IDS_USED:
+            p_col  = f"p_emitida_{model_id}"
+            _valid = pdf_c[p_col].notna()
+            ap_c = aucp_c = None
+            if _valid.sum() >= 2 and n_pos_c > 0:
+                _ys = pdf_c.loc[_valid, p_col].astype(float).values
+                _yt = pdf_c.loc[_valid, "label_real"].astype(int).values
+                if len(np.unique(_yt)) >= 2:
+                    ap_c   = float(average_precision_score(_yt, _ys))
+                    _prec_c, _rec_c, _ = precision_recall_curve(_yt, _ys)
+                    aucp_c = float(np.trapz(_prec_c[::-1], _rec_c[::-1]))
+                    mlflow.log_metrics({
+                        f"ap_{model_id}_cluster_{c_id}":     round(ap_c, 6),
+                        f"auc_pr_{model_id}_cluster_{c_id}": round(aucp_c, 6),
+                    })
+
+            _clf_metrics_rows.append({
+                "cluster":   c_id,
+                "model_id":  model_id,
+                "n":         n_c,
+                "n_pos":     n_pos_c,
+                "base_rate": round(br_c, 6),
+                "ap":        round(ap_c, 6) if ap_c is not None else None,
+                "auc_pr":    round(aucp_c, 6) if aucp_c is not None else None,
+            })
+
+    mlflow.log_dict(_clf_profile_rows, "clustering/cluster_profile.json")
+    _pdf_clf_metrics = pd.DataFrame(_clf_metrics_rows)
+    log_csv(_pdf_clf_metrics, "clustering/metrics_summary.csv")
+
+    print(f"✅ Bloco 7a — cluster_profile e métricas de classificação ({len(_cluster_ids)} clusters)")
+
+    # ── Bloco 7b: bar charts AP e AUC-PR por cluster ─────────────────────────────
+
+    _n_models_c = len(MODEL_IDS_USED)
+    _bar_x_c    = np.arange(len(_cluster_ids))
+    _bw_c       = 0.8 / _n_models_c
+
+    for _metric_c, _ylabel_c, _out_c in [
+        ("ap",     "Average Precision (AP)", "ap_by_cluster.png"),
+        ("auc_pr", "AUC-PR",                 "auc_pr_by_cluster.png"),
+    ]:
+        fig, ax = plt.subplots(figsize=(max(8, len(_cluster_ids)), 5))
+        for _mi, model_id in enumerate(MODEL_IDS_USED):
+            _sub_c = _pdf_clf_metrics[_pdf_clf_metrics["model_id"] == model_id].set_index("cluster")
+            _vals_c = [
+                float(_sub_c.loc[c_id, _metric_c])
+                if (c_id in _sub_c.index and _sub_c.loc[c_id, _metric_c] is not None
+                    and not pd.isna(_sub_c.loc[c_id, _metric_c]))
+                else 0.0
+                for c_id in _cluster_ids
+            ]
+            _offsets_c = _bar_x_c + (_mi - (_n_models_c - 1) / 2.0) * _bw_c
+            ax.bar(_offsets_c, _vals_c, _bw_c, label=model_id,
+                   color=model_color(_mi), edgecolor="white", alpha=0.85)
+
+        ax.set_xticks(_bar_x_c)
+        ax.set_xticklabels([f"C{c}" for c in _cluster_ids])
+        ax.set_xlabel("Cluster"); ax.set_ylabel(_ylabel_c)
+        ax.set_ylim(0, 1.05)
+        ax.set_title(f"{_ylabel_c} por cluster (MODE_D | {SEG_TARGET})")
+        ax.grid(True, axis="y"); ax.legend()
+        plt.tight_layout()
+        log_png(fig, f"clustering/{_out_c}")
+
+    print("✅ Bloco 7b — bar charts AP/AUC-PR por cluster")
+
+    # ── Bloco 7c: PR curves sobrepostas por cluster (1 plot por modelo) ──────────
+
+    for model_id in MODEL_IDS_USED:
+        p_col = f"p_emitida_{model_id}"
+        fig, ax = plt.subplots(figsize=(9, 7))
+        ax.axhline(base_rate, linestyle="--", color="gray", linewidth=1,
+                   label=f"no-skill global (base_rate={base_rate:.3f})")
+
+        for _ci, c_id in enumerate(_cluster_ids):
+            _mask_c = pdf[CLF_CORRETOR_COL] == c_id
+            _pdf_c  = pdf[_mask_c]
+            _valid  = _pdf_c[p_col].notna()
+            if _valid.sum() < 2:
+                continue
+            _ys = _pdf_c.loc[_valid, p_col].astype(float).values
+            _yt = _pdf_c.loc[_valid, "label_real"].astype(int).values
+            if len(np.unique(_yt)) < 2:
+                continue
+            _prec_c, _rec_c, _ = precision_recall_curve(_yt, _ys)
+            _ap_c = float(average_precision_score(_yt, _ys))
+            ax.plot(_rec_c, _prec_c, color=_clf_color(_ci), linewidth=1.5,
+                    label=f"C{c_id} (AP={_ap_c:.4f}, n={int(_mask_c.sum())})")
+
+        ax.set_xlabel("Recall"); ax.set_ylabel("Precision")
+        ax.set_title(f"PR Curves por cluster — {model_id} (MODE_D | {SEG_TARGET})")
+        ax.grid(True); ax.legend(fontsize=8)
+        plt.tight_layout()
+        log_png(fig, f"clustering/pr_curves_by_cluster_{model_id}.png")
+
+    print("✅ Bloco 7c — PR curves por cluster")
+
+    # ── Bloco 7d: Top-K por cluster + Lift@K% ────────────────────────────────────
+
+    _topk_clf_rows = []
+
+    for c_id in _cluster_ids:
+        _mask_c  = pdf[CLF_CORRETOR_COL] == c_id
+        _pdf_c   = pdf[_mask_c].copy().reset_index(drop=True)
+        _n_c     = len(_pdf_c)
+        _n_pos_c = int((_pdf_c["label_real"] == 1).sum())
+        if _n_c == 0 or _n_pos_c == 0:
+            continue
+        _br_c = _n_pos_c / _n_c
+
+        for model_id in MODEL_IDS_USED:
+            p_col    = f"p_emitida_{model_id}"
+            _pdf_c_s = _pdf_c.sort_values(p_col, ascending=False).reset_index(drop=True)
+            _pdf_c_s["_rank_local_c"] = range(1, _n_c + 1)
+
+            for k_pct in K_PCTS:
+                _top_n_c = max(1, min(round(k_pct / 100.0 * _n_c), _n_c))
+                _mask_k  = _pdf_c_s["_rank_local_c"] <= _top_n_c
+                _tp_c    = int((_mask_k & (_pdf_c_s["label_real"] == 1)).sum())
+                _p_k_c   = _tp_c / _top_n_c if _top_n_c > 0 else 0.0
+                _r_k_c   = _tp_c / _n_pos_c if _n_pos_c > 0 else 0.0
+                _lift_c  = _p_k_c / _br_c   if _br_c > 0    else 0.0
+
+                _topk_clf_rows.append({
+                    "cluster":    c_id,
+                    "model_id":   model_id,
+                    "k_pct":      k_pct,
+                    "top_n":      _top_n_c,
+                    "tp":         _tp_c,
+                    "p_at_k":     _p_k_c,
+                    "r_at_k":     _r_k_c,
+                    "lift_at_k":  _lift_c,
+                })
+
+    if _topk_clf_rows:
+        _pdf_topk_clf = pd.DataFrame(_topk_clf_rows)
+        log_csv(_pdf_topk_clf, "clustering/topk_curves_by_cluster.csv")
+
+        for model_id in MODEL_IDS_USED:
+            fig, ax = plt.subplots(figsize=(12, 5))
+            ax.axhline(1.0, linestyle="--", color="gray", linewidth=1, label="aleatório")
+            for _ci, c_id in enumerate(_cluster_ids):
+                _sub = _pdf_topk_clf[
+                    (_pdf_topk_clf["cluster"] == c_id) & (_pdf_topk_clf["model_id"] == model_id)
+                ]
+                if _sub.empty:
+                    continue
+                ax.plot(_sub["k_pct"], _sub["lift_at_k"], color=_clf_color(_ci),
+                        marker=".", markersize=2, linewidth=1.5, label=f"C{c_id}")
+            ax.set_xlabel("Top-K (%)"); ax.set_ylabel("Lift@K")
+            ax.set_title(f"Lift@K% por cluster — {model_id} (MODE_D | {SEG_TARGET})")
+            ax.grid(True); ax.legend(fontsize=8)
+            plt.tight_layout()
+            log_png(fig, f"clustering/lift_by_cluster_{model_id}.png")
+
+    print(f"✅ Bloco 7d — Top-K por cluster ({len(_topk_clf_rows)} linhas)")
+
+    # ── Bloco 7e: Distribuição de scores por cluster ──────────────────────────────
+
+    _bins_c    = np.linspace(0, 1, 51)
+    _centers_c = (_bins_c[:-1] + _bins_c[1:]) / 2.0
+    _bw_hist_c = _bins_c[1] - _bins_c[0]
+
+    _ncols_c = 3
+    _nrows_c = math.ceil(len(MODEL_IDS_USED) / _ncols_c)
+    fig, _axes_c = plt.subplots(_nrows_c, _ncols_c, figsize=(5 * _ncols_c, 4 * _nrows_c), squeeze=False)
+
+    _score_stats_c = {}   # model_id → {cluster_id → {n, mean, std, p25, p50, p75, p90}}
+
+    for _mi, model_id in enumerate(MODEL_IDS_USED):
+        p_col    = f"p_emitida_{model_id}"
+        _ax_c    = _axes_c[_mi // _ncols_c][_mi % _ncols_c]
+        _stats_c = {}
+
+        for _ci, c_id in enumerate(_cluster_ids):
+            _mask_c = pdf[CLF_CORRETOR_COL] == c_id
+            _vals_c = pdf.loc[_mask_c, p_col].dropna().astype(float).values
+            if len(_vals_c) == 0:
+                continue
+            _hist_v, _ = np.histogram(_vals_c, bins=_bins_c, density=True)
+            _ax_c.plot(_centers_c, _hist_v, color=_clf_color(_ci),
+                       linewidth=1.5, label=f"C{c_id}", alpha=0.85)
+            _stats_c[c_id] = {
+                "n":   len(_vals_c),
+                "mean": round(float(np.mean(_vals_c)),         6),
+                "std":  round(float(np.std(_vals_c)),          6),
+                "p25":  round(float(np.percentile(_vals_c, 25)), 6),
+                "p50":  round(float(np.percentile(_vals_c, 50)), 6),
+                "p75":  round(float(np.percentile(_vals_c, 75)), 6),
+                "p90":  round(float(np.percentile(_vals_c, 90)), 6),
+            }
+
+        _ax_c.set_title(model_id)
+        _ax_c.set_xlabel("p_emitida"); _ax_c.set_ylabel("densidade")
+        _ax_c.grid(True, axis="y"); _ax_c.legend(fontsize=8)
+        _score_stats_c[model_id] = _stats_c
+
+    for _ji in range(len(MODEL_IDS_USED), _nrows_c * _ncols_c):
+        _axes_c[_ji // _ncols_c][_ji % _ncols_c].set_visible(False)
+
+    fig.suptitle(f"Distribuição de scores por cluster (MODE_D | {SEG_TARGET})")
+    plt.tight_layout()
+    log_png(fig, "clustering/score_distribution_by_cluster.png")
+    mlflow.log_dict(_score_stats_c, "clustering/score_stats_by_cluster.json")
+
+    print("✅ Bloco 7e — Distribuição de scores por cluster")
+    print(f"\n✅ Bloco 7 completo — {len(_cluster_ids)} clusters × {len(MODEL_IDS_USED)} modelos")
+
+# COMMAND ----------
+
+# MAGIC %md
 # MAGIC ## Encerramento
 
 # COMMAND ----------
@@ -830,9 +1185,17 @@ print(f"\n• COMP run        : {RUN_COMP_EXEC}")
 print(f"• Tabela analisada: {INFERENCIA_TABLE_FQN}")
 print(f"• Modelos         : {MODEL_IDS_USED}")
 print(f"\n⚠️  Artifacts no MLflow run '{RUN_COMP_EXEC}':")
-print("  ranking/   → topk_curves.csv, curves_ranking.png, curves_cm_at_k.png")
-print("  classification/ → pr_curves.png, auc_pr_summary.json")
-print("  scores/    → score_distribution.png, score_stats.json")
-print("  concordance/ → rank_correlation_heatmap.png, overlap_at_k.png, rank_correlation.json")
-print("  temporal/  → precision_monthly.png, monthly_stats.csv")
-print("  summary/   → model_selection_table.csv, model_selection_table.json")
+print("  model_configs/  → {model_id}/config.json  (feature_cols, threshold, eval_summary, treino params)")
+print("  ranking/        → topk_curves.csv, curves_ranking.png, curves_cm_at_k.png")
+print("  classification/ → pr_curves.png, threshold_metrics.png, auc_pr_summary.json")
+print("  overfitting/    → overfitting_summary.csv, overfitting_comparison.png")
+print("  scores/         → score_distribution.png, score_stats.json")
+print("  concordance/    → rank_correlation_heatmap.png, overlap_at_k.png, rank_correlation.json")
+print("  temporal/       → precision_monthly.png, monthly_stats.csv")
+print("  summary/        → model_selection_table.csv, model_selection_table.json")
+if HAS_CLUSTER:
+    print("  clustering/     → cluster_profile.json, metrics_summary.csv")
+    print("                    ap_by_cluster.png, auc_pr_by_cluster.png")
+    print("                    pr_curves_by_cluster_{model_id}.png")
+    print("                    topk_curves_by_cluster.csv, lift_by_cluster_{model_id}.png")
+    print("                    score_distribution_by_cluster.png, score_stats_by_cluster.json")

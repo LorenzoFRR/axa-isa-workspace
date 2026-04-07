@@ -33,6 +33,7 @@ output (silver):
     output (gold):
         - cotacao_model_timestamp
         - cotacao_validacao_timestamp
+        
 ## 4_INF
 input (gold):
     - cotacao_validacao_timestamp
@@ -58,4 +59,3 @@ gold:
     - cotacao_validacao_timestamp
 
     - cotacao_inferencia_timestamp
-
