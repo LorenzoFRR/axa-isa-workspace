@@ -1,4 +1,4 @@
-# LINEAGE
+# LINEAGE (SOURCE ISA_DEV)
 ## 0_INGESTAO
 input (isa_bronze ou sFTP):
     - ingestão customizada (cotacao_generico e corretor_resumo/detalhe)
@@ -40,7 +40,29 @@ input (gold):
 output (gold):
     - cotacao_inferencia_timestamp
 
-----
+------------------------------------------------------------------------
+## 0_INGESTAO_INF
+input sFTP:
+    - ingestão customizada (cotacao_generico e corretor_resumo/detalhe)
+ouput (bronze):
+    - cotacao_generico_inferencia
+    - corretor_resumo_inferencia
+    - corretor_detalhe_inferencia
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+------------------------------------------------------------------------
 # TABELAS POR SCHEMA
 bronze:
     - cotacao_generico_timestamp

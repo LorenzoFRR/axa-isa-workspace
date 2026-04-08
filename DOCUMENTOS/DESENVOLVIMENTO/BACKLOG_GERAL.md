@@ -16,6 +16,7 @@ BACKLOG_GERAL documenta:
   >> Obrigatoriamente devem ter correspondência nos BACKLOGs ISA_DEV/ISA_INF [uso de flag 🔵]
 
 ## BACKLOG_GERAL
+- [ ] Gerar CLAUDE.md root/ISA_DEV/ISA_INF
 - [ ] Criar skill de checagem de consistência BACKLOGs
 - [ ] Explorar mecanismos de controle de implementações
 - [ ] Integração Claude/Databricks

@@ -25,7 +25,18 @@
   - Atualizar LINEAGE_TABELAS_MANUAL.md
   - Revisar logs ao longo das etapas (evitar redundância, etc)
   - Renomear experiments/tables/notebooks
-  - Limpar workspace (notebooks/tables)
+    - EXP: ISA_EXP -> ISA_DEV
+      - Rename MLflow - OK
+      - 0
+      - 1
+      - 2
+      - 3
+      - 4
+      - 5
+      - 6
+  - Limpar workspace
+    - Notebooks
+    - Tables
 
 - [ ] Criação comparação entre modelos (6_1_REPORT?)
 
@@ -92,20 +103,20 @@
 
 ## 5_COMP
 - [ ] Executar comparação V11 para demais segmentações 🟡
-- [ ] Ajuste LOGS
-  - Revisar logs Artifacts/clustering
-  - Ajustar logs Artifacts/model_configs
-  - Remover logs Artifacts/temporal
+- [ ] Ajuste LOGS 🟠
+  - Artifacts/clustering
+    - Remover clustering/score_distribution_by_cluster.png
+    - Ver como é gerado ap/auc_pr _by_cluster.png
+  - Artifacts/model_configs
+    - Mostrar decisão: COLS ARBITRARIAS ou COLS FS
+  - Artifacts/temporal
   - Verificar funcionamento lógica logs condicionais por MODE_CODE = D
-  - Mostrar decisão: COLS ARBITRARIAS ou COLS FS
+  - Ajustar f-string nos gráficos
+
+
 - [ ] Metrificar overfitting
 - [ ] Plotar MI + Methods Score
 - [ ] Estratificar análises por linha de produto
-- [ ] Ajustar visualização temporal/precision_monthly.png (mostrar para a segmentação correspondente) 🟡
-- [ ] Ajustar f-string nos gráficos
-- [VERIFICAR]  🔴
-  - Remover clustering/score_distribution_by_cluster.png
-  - Ver como é gerado ap/auc_pr _by_cluster.png
 
 ## 6_REPORT
 - [ ] Aprimorar report de resultados 🟣 🔵
