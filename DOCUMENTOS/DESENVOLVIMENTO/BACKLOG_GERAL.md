@@ -26,7 +26,8 @@ BACKLOG_GERAL documenta:
 
 
 ## BACKLOG_ISA_DEV (Treinamento)
-- [ ] Aprimorar report de resultados 🟣 🔵
+- [ ] Criação comparação entre modelos 🟣 🔵
+- [ ] Execução de treino V11 para todas segmentações 🟣 🔵
 
 ## BACKLOG_ISA_INF (Produção)
 - [ ] Implementar pendências e ajustar pipeline (Implementação Ampla) 🟣 🔵

@@ -11,7 +11,7 @@ import uuid
 # =========================
 # MLflow (estrutura)
 # =========================
-EXPERIMENT_NAME = "/Users/psw.service@pswdigital.com.br/ISA_DEV/ISA_EXP"
+EXPERIMENT_NAME = "/Users/psw.service@pswdigital.com.br/ISA_DEV/ISA_DEV"
 
 PR_TREINO_NAME  = "T_PR_TREINO"
 MODE_CODE       = "C"
@@ -124,7 +124,7 @@ FS_METHODS_CONFIG = {
 
 TOPK_LIST = [7]
 
-print("✅ CONFIG MODE_C carregada")
+print(f"✅ CONFIG MODE_{MODE_CODE} carregada")
 print("• input         :", COTACAO_SEG_FQN)
 print("• mode          :", MODE_CODE)
 print("• versao        :", TREINO_VERSAO)

@@ -24,6 +24,7 @@
     - SOURCE_FILE -> Nome do arquivo na fonte (sFTP)
     - FL_NOVO -> Quando processa uma linha nova (true). No mesmo processamento, o que era true vira false
 - Lógicas de processamento
+    - Como fica processamento caso não houver tabelas novas no sFTP
     - Como fica o reflexo do MODE ao longo da primeira execução e próximas?
     - FL_NOVO funcionando?
     - Só modificar MODE de DADOS_ANTIGO -> COTACAO na segunda execução já funciona?

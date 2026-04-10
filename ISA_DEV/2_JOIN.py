@@ -24,7 +24,7 @@ from pyspark.sql.window import Window
 # =========================
 # MLflow
 # =========================
-EXPERIMENT_NAME = "/Workspace/Users/psw.service@pswdigital.com.br/TESTE_ML_NOVO/TESTE/ISA_EXP"      # <<< AJUSTE
+EXPERIMENT_NAME = "/Users/psw.service@pswdigital.com.br/ISA_DEV/ISA_DEV"
 PARENT_RUN_NAME = "T_PR_JOIN"   # parent run só para acomodar a CR
 
 # =========================

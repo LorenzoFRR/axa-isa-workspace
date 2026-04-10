@@ -42,7 +42,7 @@ spark.sql(f"CREATE SCHEMA IF NOT EXISTS {schema_name}")
 # =========================
 # MLflow
 # =========================
-EXPERIMENT_NAME = "/Workspace/Users/psw.service@pswdigital.com.br/TESTE_ML_NOVO/TESTE/ISA_EXP"
+EXPERIMENT_NAME = "/Users/psw.service@pswdigital.com.br/ISA_DEV/ISA_DEV"
 PARENT_RUN_NAME = "T_PR_PRE_PROC"   # parent run só para acomodar a CR
 
 # =========================

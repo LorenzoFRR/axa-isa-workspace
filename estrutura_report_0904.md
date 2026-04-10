@@ -1,0 +1,182 @@
+- Artifacts
+    - LINEAGE_TABELAS
+        - aqui, precisarei ver qual o nome de cada tabela associada às etapas do pipleine, em cada camada (bronze, silver, gold)
+    - 0_INGESTAO
+        - nome da run
+        - infos_processamento/
+            - nome tabela cotacao_generico criada na camada bronze
+            - nome tabela corretor_detalhe criada na camada bronze
+            - nome tabela corretor_resumo criada na camada bronze
+            - run referente a T_INGESTAO_timestamp/Artifacts/profiling/profiling.json
+            - run referente a T_INGESTAO_timestamp/Artifacts/linhas_por_arquivo.json
+            - run referente a T_INGESTAO_timestamp/Artifacts/processados.json
+            - run referente a T_INGESTAO_timestamp/Metric/n_move_ok
+            - run referente a T_INGESTAO_timestamp/Metric/n_move_fail
+            - run referente a T_INGESTAO_timestamp/Metric/n_linhas_totais
+            - run referente a T_INGESTAO_timestamp/Metric/n_processados
+            - run referente a T_INGESTAO_timestamp/Metric/n_candidatos
+            - run referente a T_INGESTAO_timestamp/Metric/n_arquivos_listados
+    - 1_PRE_PROC
+        - nome da run
+        - regras_aplicadas/
+            - run referente a T_PRE_PROC_timestamp/Artifacts/rules_execution.json
+        - resultados_processamento/
+            - run referente a T_PRE_PROC_timestamp/Artifacts/tables_lineage.json
+            - run referente a T_PRE_PROC_timestamp/Artifacts/profiling/profiling.json
+    - 2_JOIN
+        - nome da run
+        - infos_processamento/
+            - run referente a T_JOIN_timestamp/Metric/n_after_join_1
+            - run referente a T_JOIN_timestamp/Metric/n_after_join_2
+            - run referente a T_JOIN_timestamp/Metric/n_detalhe_in
+            - run referente a T_JOIN_timestamp/Metric/n_gen_in
+            - run referente a T_JOIN_timestamp/Metric/n_resumo_in
+            - run referente a T_JOIN_timestamp/Metric/n_seg_final
+            - run referente a T_JOIN_timestamp/Metric/n_seg_not_null
+            - run referente a T_JOIN_timestamp/Artifacts/transforms_execution.json
+            - run referente a T_JOIN_timestamp/Artifacts/tables_lineage.json
+            - run referente a T_JOIN_timestamp/Artifacts/status_dist_by_seg.json
+            - run referente a T_JOIN_timestamp/Artifacts/seg_counts.json
+            - run referente a T_JOIN_timestamp/Artifacts/profiling_seg.json
+            - run referente a T_JOIN_timestamp/Artifacts/join_spec.json
+            - run referente a T_JOIN_timestamp/Artifacts/profiling/profiling.json
+            - run referente a T_JOIN_timestamp/Artifacts/analysis/status_by_month_stacked_{id}
+    - 3_TREINO_MODE_C/D (aqui vai depender se é C ou D) -> precisará ter uma lógica
+        - nome da run
+        > PARA MODE_C
+            - T_PRE_PROC_MODEL
+                - nome da run
+                - run referente a T_PRE_PROC_MODEL_timestamp/Parameters/mode_code
+                - run referente a T_PRE_PROC_MODEL_timestamp/Parameters/seg_target
+                - regras_aplicadas/
+                    - run referente a T_PRE_PROC_MODEL_timestamp/Artifacts/rules_execution.json
+                    - run referente a T_PRE_PROC_MODEL_timestamp/Parameters/high_card_threshold
+                    - run referente a T_PRE_PROC_MODEL_timestamp/Parameters/null_drop_pct
+                    - run referente a T_PRE_PROC_MODEL_timestamp/Artifacts/pre_proc_feature/rules_feature_prep.json
+                    - run referente a T_PRE_PROC_MODEL_timestamp/Artifacts/pre_proc_feature/rules_feature_prep_catalog.json
+                - resultados_processamento/
+                    - run referente a T_PRE_PROC_MODEL_timestamp/Metric/n_df_model
+                    - run referente a T_PRE_PROC_MODEL_timestamp/Metric/n_df_validacao
+                    - run referente a T_PRE_PROC_MODEL_timestamp/Artifacts/tables_lineage.json
+                    - run referente a T_PRE_PROC_MODEL_timestamp/Artifacts/profiling_df_validacao.json
+                    - run referente a T_PRE_PROC_MODEL_timestamp/Artifacts/profiling_df_model.json
+                    - run referente a T_PRE_PROC_MODEL_timestamp/Artifacts/pre_proc_feature/cat_cardinality.json
+                    - run referente a T_PRE_PROC_MODEL_timestamp/Artifacts/pre_proc_feature/null_profile.json
+            - T_FEATURE_SELECTION
+                - nome da run
+                - run referente a T_FS_timestamp/Parameter/mode_code
+                - run referente a T_FS_timestamp/Parameter/seg_target
+                - entradas_feature_selection/
+                    - run referente a T_FS_timestamp/Parameter/features_candidates_enabled.json
+                    - run referente a T_FS_timestamp/Parameter/features_candidates_disabled.json
+                - configs_feature_selection/
+                    - run referente a T_FS_timestamp/Parameter/fs_methods_config.json
+                    - run referente a T_FS_timestamp/Parameter/fs_seeds.json
+                - resultados_processamento/
+                    - run referente a T_FS_timestamp/Artifacts/table_lineage/json
+                    - run referente a T_FS_timestamp/Artifacts/summary/features_ranked.json
+                    - run referente a T_FS_timestamp/Artifacts/pearson/pearson_heatmap.png
+            - T_TREINO
+                - nome da run
+                - run referente a T_TREINO_timestamp/Parameters/seg_target
+                - run referente a T_TREINO_timestamp/Parameters/mode_code
+                - entradas_modelos/
+                    - run referente a T_TREINO_timestamp/Parameters/feature_cols
+                    - run referente a T_TREINO_timestamp/Parameters/n_features
+                - configs_modelos/
+                    - run referente a T_TREINO_timestamp/Parameters/cv_folds
+                    - run referente a T_TREINO_timestamp/Parameters/eval_criterion
+                    - run referente a T_TREINO_timestamp/Parameters/eval_precision_target
+                    - run referente a T_TREINO_timestamp/Parameters/gbt_param_grid
+                    - run referente a T_TREINO_timestamp/Parameters/label_rate
+                    - run referente a T_TREINO_timestamp/Parameters/model_ids
+                - resultados_processamento/
+                    - run referente a T_TREINO_timestamp/Artifacts/tables_lineage.json
+        > PARA MODE_D
+            - T_PRE_PROC_MODEL
+                - nome da run
+                - run referente a T_PRE_PROC_MODEL_timestamp/Parameters/mode_code
+                - run referente a T_PRE_PROC_MODEL_timestamp/Parameters/seg_target
+                - regras_aplicadas/
+                    - run referente a T_PRE_PROC_MODEL_timestamp/Artifacts/rules_execution.json
+                    - run referente a T_PRE_PROC_MODEL_timestamp/Parameters/high_card_threshold
+                    - run referente a T_PRE_PROC_MODEL_timestamp/Parameters/null_drop_pct
+                    - run referente a T_PRE_PROC_MODEL_timestamp/Artifacts/pre_proc_feature/rules_feature_prep.json
+                    - run referente a T_PRE_PROC_MODEL_timestamp/Artifacts/pre_proc_feature/rules_feature_prep_catalog.json
+                - resultados_processamento/
+                    - run referente a T_PRE_PROC_MODEL_timestamp/Metric/n_df_model
+                    - run referente a T_PRE_PROC_MODEL_timestamp/Metric/n_df_validacao
+                    - run referente a T_PRE_PROC_MODEL_timestamp/Artifacts/tables_lineage.json
+                    - run referente a T_PRE_PROC_MODEL_timestamp/Artifacts/profiling_df_validacao.json
+                    - run referente a T_PRE_PROC_MODEL_timestamp/Artifacts/profiling_df_model.json
+                    - run referente a T_PRE_PROC_MODEL_timestamp/Artifacts/pre_proc_feature/cat_cardinality.json
+                    - run referente a T_PRE_PROC_MODEL_timestamp/Artifacts/pre_proc_feature/null_profile.json
+            - T_CLUSTERING_EXPLORE
+                - nome da run
+                - run referente a T_CLUSTERING_EXPLORE_timestamp/Parameters/seg_target
+                - configs_clustering/
+                    - run referente a T_CLUSTERING_EXPLORE_timestamp/Parameters/clf_k_range_explore
+                    - run referente a T_CLUSTERING_EXPLORE_timestamp/Parameters/clf_cluster_features
+                - resultados_clustering/
+                    - run referente a T_CLUSTERING_EXPLORE_timestamp/Artifacts/clustering/{tudo que existir aqui}
+            - T_CLUSTERING_FIT
+                - definicoes_clustering/
+                    - run referente a T_CLUSTERING_FIT_timestamp/Parameters/clf_scale_strategy_final
+                    - run referente a T_CLUSTERING_FIT_timestamp/Parameters/clf_k_final
+                - resultados_clustering_fit/
+                    - run referente a T_CLUSTERING_FIT_timestamp/Artifacts/{tudo que existir aqui}
+            - T_FS
+                - nome da run
+                - run referente a T_FS_timestamp/Parameters/mode_code
+                - run referente a T_FS_timestamp/Parameters/seg_target
+                - entradas_feature_selection/
+                    - run referente a T_FS_timestamp/Parameters/features_candidate_enabled
+                    - run referente a T_FS_timestamp/Parameters/features_candidate_disabled
+                - configs_feature_selection/
+                    - run referente a T_FS_timestamp/Parameters/fs_methods_config
+                    - run referente a T_FS_timestamp/Parameters/fs_seeds
+                - resultados_processamento/
+                    - run referente a T_FS_timestamp/Artifacts/tables_lineage.json
+                    - run referente a T_FS_timestamp/Artifacts/summary/features_ranked.json
+                    - run referente a T_FS_timestamp/Artifacts/pearson/pearson_heatmap.json
+            - T_TREINO
+                - nome da run
+                - run referente a T_TREINO_timestamp/Parameters/mode_code
+                - run referente a T_TREINO_timestamp/Parameters/seg_target
+                - entradas_modelos/
+                    - run referente a T_TREINO_timestamp/Parameters/feature_cols
+                    - run referente a T_TREINO_timestamp/Parameters/n_features
+                    - run referente a T_TREINO_timestamp/Parameters/n_model
+                - configs_modelos/
+                    - run referente a T_TREINO_timestamp/Parameters/cv_folds
+                    - run referente a T_TREINO_timestamp/Parameters/cv_seed
+                    - run referente a T_TREINO_timestamp/Parameters/gbt_param_grid
+                    - run referente a T_TREINO_timestamp/Parameters/label_rate
+                - resultados_processamento/
+                    - run referente a T_TREINO_timestamp/Artifacts/tables_lineage.json
+    - 4_INFERENCIA
+        - nome da run
+        - run referente a T_INF_timestamp/Parameters/seg_target
+        - run referente a T_INF_timestamp/Parameters/models_id_inferred
+        - run referente a T_INF_timestamp/Parameters/mode_code
+        - run referente a T_INF_timestamp/Parameters/inf_versao
+        - run referente a T_INF_timestamp/Parameters/feature_cols
+        - run referente a T_INF_timestamp/Artifacts/tables_lineage.json
+    - 5_COMP
+        - nome da run
+        - Artifacts/versao_ref
+        - Artifacts/seg_target
+        - Artifacts/mode_code
+        - Artifacts/inferencia_table_fqn
+        - Artifacts/base_rate
+        - Artifacts/n_rows
+        - metricas_treinamento/
+            - Artifacts/classification/pr_curves.png
+            - Artifacts/classification/threshold_metrics.json
+            - Artifacts/concordance/overlap_at_k.png
+            - Artifacts/concordance/rank_correlation_heatmap.png
+            - Artifacts/overfitting/overfitting_comparison.png
+        - metricas_ranking
+        Artifacts/ranking/curves_cm_at_k.png
+            - Artifacts/ranking/curves_ranking.png
+            - Artifacts/scores/score_distribution.png

@@ -11,7 +11,7 @@ import uuid
 # =========================
 # MLflow
 # =========================
-EXPERIMENT_NAME = "/Users/psw.service@pswdigital.com.br/ISA_DEV/ISA_EXP"
+EXPERIMENT_NAME = "/Users/psw.service@pswdigital.com.br/ISA_DEV/ISA_DEV"
 
 PR_INF_NAME = "T_PR_INFERENCIA"
 MODE_CODE   = "D"
@@ -31,7 +31,7 @@ PR_INF_RUN_ID_OVERRIDE = "e7af2dc5cb8b45c194656889f4b28fd2"
 # REFERÊNCIA AO TREINO
 # =========================
 # run_id do exec run T_TREINO (run_role=exec, step=TREINO) — impresso no final do 3_TREINO_MODE_C
-TREINO_EXEC_RUN_ID = "06fb1d34957b46ae9ae5848d512aaad0"   # <<< OBRIGATÓRIO
+TREINO_EXEC_RUN_ID = "298ed3dae51b4bfba9cf7a6408d3f400"   # <<< OBRIGATÓRIO
 SEG_TARGET = "SEGURO_NOVO_MANUAL"   # <<< AJUSTE
 
 # =========================
@@ -51,8 +51,6 @@ SEG_COL    = "SEG"
 DATE_COL   = "DATA_COTACAO"
 SEG_SLUG   = SEG_TARGET.lower()
 
-
-
 ID_COLS = [ID_COL, "CD_DOC_CORRETOR", "TS_ARQ", SEG_COL, DATE_COL]
 
 # =========================
@@ -68,13 +66,13 @@ OUTROS_LABEL = "OUTROS"   # constante usada na truncagem; deve coincidir com o t
 # INPUT / OUTPUT
 # =========================
 # df_validacao gerado pelo 3_TREINO_MODE_C (logado como param 'df_validacao_fqn')
-INPUT_TABLE_FQN = "gold.cotacao_validacao_d_20260331_134339_e378e6bd"   # <<< AJUSTE
+INPUT_TABLE_FQN = "gold.cotacao_validacao_d_20260406_095721_91d24431"   # <<< AJUSTE
 
 OUT_SCHEMA       = "gold"
 OUTPUT_TABLE_FQN = f"{OUT_SCHEMA}.cotacao_inferencia_mode_{MODE_CODE.lower()}_{SEG_SLUG}_{TS_EXEC}"
 WRITE_MODE       = "overwrite"
 
-print("✅ CONFIG INFERÊNCIA MODE_C carregada")
+print(f"✅ CONFIG INFERÊNCIA MODE_{MODE_CODE} carregada")
 print("• input table      :", INPUT_TABLE_FQN)
 print("• treino_exec_run  :", TREINO_EXEC_RUN_ID or "(a preencher)")
 print("• model_ids        :", MODEL_IDS or "(ler do MLflow)")
@@ -454,5 +452,5 @@ print("✅ Runs encerradas")
 print("\n• output table     :", OUTPUT_TABLE_FQN)
 print("• modelos inferidos:", MODEL_IDS_USED)
 print("• colunas de score :", [f"p_emitida_{m}" for m in MODEL_IDS_USED])
-print("\n⚠️  Anotar OUTPUT_TABLE_FQN para uso no 5_COMP_MODE_C:")
+print(f"\n⚠️  Anotar OUTPUT_TABLE_FQN para uso no 5_COMP_MODE_{MODE_CODE}:")
 print(f"    INFERENCIA_TABLE_FQN = \"{OUTPUT_TABLE_FQN}\"")

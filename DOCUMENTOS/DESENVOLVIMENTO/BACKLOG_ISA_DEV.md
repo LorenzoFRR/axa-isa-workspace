@@ -8,38 +8,47 @@
 # ###################################################################
 # ###################################################################
 
-## PENDÊNCIAS SEM ETAPA
+# PENDÊNCIAS GERAIS
+## DIRECIONAMENTO
+- [ ] Avaliar necessidade análise capacidade operacional
+
+## EXECUÇÃO
 - [ ] Criação diagramas/visualizações de processo
   - Ramificações de execuções (via download MLflow)
   - Diagrama específico para TREINO_MODE_C/D (lógicas/fluxos/etc)
   - Dashboard consumo dados modelos/performance/lineage/etc
-  - Análise lineage pipeline
-    - Para uma dada tabela, verificar quais runs estão associadas
-    - Para uma dada run, verificar quais tabelas estão associadas
-    - Para cada VX, qual MODE está associada
-    - Mostrar visão ramificada
+    - Análise lineage pipeline
+      - Para uma dada tabela, verificar quais runs estão associadas
+      - Para uma dada run, verificar quais tabelas estão associadas
+      - Para cada VX, qual MODE está associada
+      - Mostrar visão ramificada
+- [ ] Veirificar como implementar Github neste desenvolvimento
 
-- [ ] Avaliar necessidade análise capacidade operacional
-
-- [ ] Organizar desenvolvimento 🔴
+- [ ] Organizar/Atualizar/Verificar desenvolvimento 🔴
   - Atualizar LINEAGE_TABELAS_MANUAL.md
-  - Revisar logs ao longo das etapas (evitar redundância, etc)
+  - Revisar logs ao longo das etapas (evitar redundância, etc) !!
   - Renomear experiments/tables/notebooks
-    - EXP: ISA_EXP -> ISA_DEV
-      - Rename MLflow - OK
-      - 0
-      - 1
-      - 2
-      - 3
-      - 4
-      - 5
-      - 6
+    - EXP: ISA_EXP -> ISA_DEV - OK
   - Limpar workspace
     - Notebooks
     - Tables
 
-- [ ] Criação comparação entre modelos (6_1_REPORT?)
+- [ ] Criação comparação entre modelos 🟣 🔵
+  - [ ] Aprimoramento 6_REPORT
+  - [ ] Ver se crio 6_1_REPORT
 
+- [ ] Execução de treino V11 para todas segmentações 🟣 🔵
+  - [ ] SEGURO_NOVO_MANUAL
+    - [ ] Retreinar com novos valores de K (comparar com treino já realizado T_TREINO_20260406_095721)
+  - [ ] SEGURO_NOVO_DIGITAL
+  - [ ] RENOVACAO_MANUAL
+    - Em andamento
+  - [ ] RENOVACAO__DIGITAL
+
+# ###################################################################
+# ###################################################################
+
+# PENDÊNCIAS DE AJUSTES NO PIPELINE
 ## 0_INGESTAO
 - [ ] Re-avaliar nomenclatura tabelas de corretor
 - [ ] Logar profiling tabelas de corretor
@@ -47,13 +56,13 @@
 ## 1_PRE_PROC
   - [ ] Fazer análise função que calcula regra temporal colunas DIAS_*
   - [ ] Entender como trabalhar com DIAS_ANALISE_SUBSCRICAO para cotações DIGITAL
-  - [ ] Remover DT_INICIO_VIGENCIA (tá aparecendo em silver.cotacao_seg_timestamp e em diante - removida em TREINO) 🟡
+  - [ ] Remover DT_INICIO_VIGENCIA (tá aparecendo em silver.cotacao_seg_timestamp e em diante - removida em TREINO)
 
 ## 2_JOIN
 
 ## 0_INGESTAO
 - [ ] Ver modos de ingestão para desenvolvimento
-- [ ] Logar count por DATA_COTACAO
+- [ ] Ajustar: Logar count por DATA_COTACAO
 
 ## 1_PRE_PROC
 - [ ] Verificar leakage em regras geradas a partir de colunas de FLAG
@@ -73,8 +82,10 @@
   - [ ] Avaliar novas colunas para inserir na etapa de clustering
   - [ ] Entender leitura sillouette/elbow
   - [ ] Entender estratégias de normalização implementadas
-
+  - [ ] Logar mode_code
+  
   ### SUBETAPA CLUSTERING_FIT (MODE_D specific)
+  - [ ] Logar mode_code
 
   ### SUBETAPA FEATURE SELECTION
   - [ ] Métodos paralelos de Análise de Importância
@@ -102,8 +113,7 @@
 ## 4_INFERENCIA
 
 ## 5_COMP
-- [ ] Executar comparação V11 para demais segmentações 🟡
-- [ ] Ajuste LOGS 🟠
+- [ ] Ajuste LOGS
   - Artifacts/clustering
     - Remover clustering/score_distribution_by_cluster.png
     - Ver como é gerado ap/auc_pr _by_cluster.png
@@ -119,5 +129,4 @@
 - [ ] Estratificar análises por linha de produto
 
 ## 6_REPORT
-- [ ] Aprimorar report de resultados 🟣 🔵
-- [ ] Definir e espelhar logs de 5_COMP 🟡
+- [ ] Definir e espelhar logs de 5_COMP

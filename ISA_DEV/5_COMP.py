@@ -11,7 +11,7 @@ import mlflow
 # =========================
 # MLflow / Estrutura
 # =========================
-EXPERIMENT_NAME = "/Users/psw.service@pswdigital.com.br/ISA_DEV/ISA_EXP"
+EXPERIMENT_NAME = "/Users/psw.service@pswdigital.com.br/ISA_DEV/ISA_DEV"
 PR_COMP_NAME            = "T_PR_COMP"
 MODE_CODE               = "D"
 COMP_VERSAO             = "V11.0.0"
@@ -29,7 +29,7 @@ PR_COMP_RUN_ID_OVERRIDE = "9db9936565ce4512aab8966c638c6897"
 # =========================
 # INPUT
 # =========================
-INFERENCIA_TABLE_FQN = "gold.cotacao_inferencia_mode_d_seguro_novo_manual_20260331_141257"  # <<< AJUSTE
+INFERENCIA_TABLE_FQN = "gold.cotacao_inferencia_mode_d_seguro_novo_manual_20260406_150924"  # <<< AJUSTE
 SEG_TARGET           = "SEGURO_NOVO_MANUAL"                   # <<< AJUSTE
 
 # =========================
@@ -43,7 +43,7 @@ MODEL_IDS = []
 # =========================
 # run_id do exec run T_TREINO — necessário para carregar os thresholds de cada modelo.
 # Se vazio, thresholds não são anotados nos gráficos.
-TREINO_EXEC_RUN_ID = "06fb1d34957b46ae9ae5848d512aaad0"   # <<< AJUSTE
+TREINO_EXEC_RUN_ID = "298ed3dae51b4bfba9cf7a6408d3f400"   # <<< AJUSTE
 
 # =========================
 # REFERÊNCIA AO JOIN
@@ -57,7 +57,7 @@ JOIN_EXEC_RUN_ID = "28fbd7c3809e4eb0b437956b7af15dd8"   # <<< AJUSTE
 # =========================
 # run_id do exec run T_CLUSTERING_FIT — opcional.
 # Se preenchido, enriquece clustering/cluster_profile.json com centroides do fitting.
-CLF_FIT_EXEC_RUN_ID = ""  # <<< AJUSTE (apenas MODE_D)
+CLF_FIT_EXEC_RUN_ID = "c19f81e6cd0448f4af52e0713ddf05a9"  # <<< AJUSTE (apenas MODE_D)
 
 # =========================
 # PARÂMETROS DE ANÁLISE
@@ -73,7 +73,7 @@ DATE_COL         = "DATA_COTACAO"
 SEG_COL          = "SEG"
 CLF_CORRETOR_COL = "CLF_CORRETOR"
 
-print("✅ CONFIG COMP MODE_C carregada")
+print(f"✅ CONFIG COMP MODE_{MODE_CODE} carregada")
 print("• input table  :", INFERENCIA_TABLE_FQN)
 print("• mode         :", MODE_CODE, "| versão:", COMP_VERSAO)
 print("• topk_ref_pct :", TOPK_REF_PCT)

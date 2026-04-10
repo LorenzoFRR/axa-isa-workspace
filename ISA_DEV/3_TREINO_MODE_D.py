@@ -16,7 +16,7 @@ import uuid
 # =========================
 # MLflow (estrutura)
 # =========================
-EXPERIMENT_NAME = "/Users/psw.service@pswdigital.com.br/ISA_DEV/ISA_EXP"  # <<< AJUSTE
+EXPERIMENT_NAME = "/Users/psw.service@pswdigital.com.br/ISA_DEV/ISA_DEV"  # <<< AJUSTE
 
 PR_TREINO_NAME = "T_PR_TREINO"
 MODE_CODE      = "D"
@@ -79,7 +79,7 @@ DO_PROFILE = True
 # =========================
 # PRE_PROC_MODEL / FS — colunas e segmento
 # =========================
-SEG_TARGET = "SEGURO_NOVO_MANUAL"  # <<< AJUSTE
+SEG_TARGET = "RENOVACAO_MANUAL"  # <<< AJUSTE
 
 NULL_DROP_PCT       = 0.90
 HIGH_CARD_THRESHOLD = 15
@@ -117,7 +117,7 @@ FEATURE_CANDIDATES = {
     "QTD_COTACAO_2025_detalhe":                  False,   # bigint
     "QTD_EMITIDO_2025_detalhe":                  False,   # bigint
     "HR_2025_detalhe":                           False,   # decimal(17,6)
-    "CLF_CORRETOR":                              True,   # string — cluster K-Means do corretor (MODE_D)
+    "CLF_CORRETOR":                              True,    # string — cluster K-Means do corretor (MODE_D) | HARD CODED, pois CLF_CORRETOR é criada em CLUSTERING_FIT, apenas.
 }
 
 # =========================
@@ -215,7 +215,7 @@ for _c in _candidates:
     _t   = _schema_map[_c]
     _pad = " " * max(1, 42 - len(_c))
     print(f'    "{_c}":{_pad}True,   # {_t}')
-print('    "CLF_CORRETOR":                          True,   # string — cluster K-Means do corretor (MODE_D)')
+print('    "CLF_CORRETOR":                              True,   # string — cluster K-Means do corretor (MODE_D)')
 print("}")
 print()
 print(f"# Candidatas: {len(_candidates) + 1} | Excluídas estruturalmente ({len(_never_feat)}): {sorted(_never_feat)}")
@@ -1047,7 +1047,7 @@ print("\n• Inspecionar clustering/explore/{strategy}/ no MLflow antes de preen
 # ============================================================
 # DECISION CELL — preencher após inspecionar MLflow
 # ============================================================
-CLF_K_FINAL              = 7                  # <<< AJUSTE após ver elbow + silhouette por estratégia
+CLF_K_FINAL              = 3                  # <<< AJUSTE após ver elbow + silhouette por estratégia
 CLF_SCALE_STRATEGY_FINAL = "log1p_standard"   # <<< AJUSTE — "standard" | "log1p_standard" | "robust"
 
 assert CLF_SCALE_STRATEGY_FINAL in CLF_SCALE_STRATEGIES, \
@@ -1831,16 +1831,21 @@ for _c in _available_for_treino:
 
 # COMMAND ----------
 
+TREINO_COL_MODE
+
+# COMMAND ----------
+
 TREINO_COLUNAS_ARBITRARIAS = [
   "DIAS_COTACAO",
   "DIAS_INICIO_VIGENCIA",
-  "VL_PRE_TOTAL",
   "DIAS_ULTIMA_ATUALIZACAO",
-  "VL_PREMIO_LIQUIDO",
+  "INTERMENDIARIO_PERFIL",
   "DIAS_VALIDADE",
   "CLF_CORRETOR",
   "DS_PRODUTO_NOME"
   ]
+
+  
 
 # COMMAND ----------
 

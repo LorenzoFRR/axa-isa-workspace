@@ -75,7 +75,7 @@ REMOTE_LIST_DIR  = DADOS_ANTIGOS_DIR if MODE == "PASTA_DADOS_ANTIGOS" else REMOT
 FILE_REGEX = re.compile(r"^COTACAO_GENERICO_(?:\d+_)?\d{8}\.csv$")
 
 # =========================
-# Leitura CSV
+# --- COTACAO_GENERICO ---
 # =========================
 CSV_OPTIONS = {
     "header":    True,
@@ -86,15 +86,18 @@ CSV_OPTIONS = {
 }
 
 # =========================
-# Tabelas auxiliares de corretor
+# --- CORRETOR_DETALHE ---
 # =========================
-SRC_CORRETOR_RESUMO  = "isa_bronze.corretor_resumo"
-SRC_CORRETOR_DETALHE = "isa_bronze.corretor_detalhe2"
-
-DST_CORRETOR_RESUMO  = f"{TARGET_SCHEMA}.corretor_resumo_inferencia"
+CORRETOR_REMOTE_DIR  = "/PSW/Arquivos/API/Entrada/GENERICO/CORRETOR"
+CORRETOR_FILE_NAME   = "CORRETOR_DETALHE.csv"
+CORRETOR_CSV_OPTIONS = {          # ajustar se o arquivo usar separador diferente
+    "header":    True,
+    "delimiter": "|",
+    "quote":     "\u0000",
+    "escape":    "\u0000",
+    "encoding":  "ISO-8859-1",
+}
 DST_CORRETOR_DETALHE = f"{TARGET_SCHEMA}.corretor_detalhe_inferencia"
-
-REFRESH_CORRETOR_TABLES = True  # True: sobrescreve; False: cria só se não existir
 
 
 # COMMAND ----------
@@ -216,12 +219,10 @@ def build_cfg_ingestao_dict() -> dict:
             "bronze_dir": BRONZE_DIR,
         },
         "csv_options": CSV_OPTIONS,
-        "corretor_tables": {
-            "src_corretor_resumo":  SRC_CORRETOR_RESUMO,
-            "src_corretor_detalhe": SRC_CORRETOR_DETALHE,
-            "dst_corretor_resumo":  DST_CORRETOR_RESUMO,
-            "dst_corretor_detalhe": DST_CORRETOR_DETALHE,
-            "refresh":              REFRESH_CORRETOR_TABLES,
+        "corretor_detalhe": {
+            "remote_dir":  CORRETOR_REMOTE_DIR,
+            "file_name":   CORRETOR_FILE_NAME,
+            "dst_table":   DST_CORRETOR_DETALHE,
         },
     }
 
@@ -263,17 +264,32 @@ def log_ts_arq_profiling(fact_table_fqn: str) -> None:
     mlflow.log_figure(fig, "profiling/ts_arq_contagem.png")
     plt.close(fig)
 
-def copy_corretor_tables():
-    if REFRESH_CORRETOR_TABLES or (not table_exists(DST_CORRETOR_RESUMO)):
-        (spark.table(SRC_CORRETOR_RESUMO)
-              .write.format("delta")
-              .mode("overwrite")
-              .saveAsTable(DST_CORRETOR_RESUMO))
-    if REFRESH_CORRETOR_TABLES or (not table_exists(DST_CORRETOR_DETALHE)):
-        (spark.table(SRC_CORRETOR_DETALHE)
-              .write.format("delta")
-              .mode("overwrite")
-              .saveAsTable(DST_CORRETOR_DETALHE))
+def ingest_corretor_detalhe() -> int:
+    caminho_local = baixar_arquivo_ftp(HOST, USER, PASSWORD, CORRETOR_REMOTE_DIR, CORRETOR_FILE_NAME, LOCAL_DIR)
+
+    bronze_file = f"{BRONZE_DIR.rstrip('/')}/{CORRETOR_FILE_NAME}"
+    dbutils.fs.mv(f"file:{caminho_local}", bronze_file, True)
+
+    reader = spark.read
+    for k, v in CORRETOR_CSV_OPTIONS.items():
+        reader = reader.option(k, v)
+    df = reader.csv(bronze_file)
+
+    df = df.toDF(*[c.replace('"', '').replace("'", "") for c in df.columns])
+    for c, t in df.dtypes:
+        if t == "string":
+            df = df.withColumn(c, F.regexp_replace(F.col(c), '"', ''))
+
+    df = df.withColumn("TS_ATUALIZACAO", F.current_timestamp())
+
+    (df.write
+       .format("delta")
+       .mode("overwrite")
+       .saveAsTable(DST_CORRETOR_DETALHE))
+
+    n = df.count()
+    print(f"{CORRETOR_FILE_NAME} -> {n} linhas (overwrite)")
+    return n
 
 def run_ingestao_into_fixed_fact_table():
     processados_no_run = []
@@ -425,7 +441,6 @@ with pr_ctx as pr:
         mlflow.log_param("remote_list_dir",         REMOTE_LIST_DIR)
         mlflow.log_param("delimiter",               CSV_OPTIONS["delimiter"])
         mlflow.log_param("encoding",                CSV_OPTIONS["encoding"])
-        mlflow.log_param("refresh_corretor_tables", str(REFRESH_CORRETOR_TABLES))
         mlflow.log_param("limit",                   str(LIMIT) if MODE == "PASTA_DADOS_ANTIGOS" else "n/a")
 
         mlflow.log_dict(build_cfg_ingestao_dict(), "cfg_ingestao.json")
@@ -460,12 +475,12 @@ with pr_ctx as pr:
         mlflow.log_metric("n_move_ok",   n_move_ok)
         mlflow.log_metric("n_move_fail", n_move_fail)
 
-        copy_corretor_tables()
+        n_linhas_corretor = ingest_corretor_detalhe()
+        mlflow.log_metric("n_linhas_corretor", n_linhas_corretor)
 
         exec_run_id = cr.info.run_id
 
 print("Concluido")
 print("• fato:",             FACT_TABLE_FQN)
-print("• corretor_resumo:",  DST_CORRETOR_RESUMO)
 print("• corretor_detalhe:", DST_CORRETOR_DETALHE)
 print(f"• EXEC_RUN_ID: {exec_run_id}")
